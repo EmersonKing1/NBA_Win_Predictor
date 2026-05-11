@@ -490,6 +490,15 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
+.clock-final {
+  font-family: var(--f-display);
+  font-weight: 900;
+  font-size: 42px;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  color: var(--text);
+  text-align: center;
+}
 .clock-tag {
   font-family: var(--f-mono);
   font-size: 9px;
@@ -724,9 +733,9 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
   text-transform: uppercase;
 }
 
-/* WP Chart */
+/* WP Chart — full width panel */
 .chart-wrap { position: relative; }
-.chart-svg { width: 100%; height: 220px; display: block; }
+.chart-svg { width: 100%; height: 280px; display: block; }
 .chart-legend {
   display: flex; gap: 16px;
   font-family: var(--f-mono);

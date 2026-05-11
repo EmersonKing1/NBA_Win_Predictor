@@ -36,7 +36,10 @@ export function HeroGame({ game, probability, teamRecords = {} }) {
   const pctHome = (homeProb * 100).toFixed(1)
   const pctAway = (awayProb * 100).toFixed(1)
 
-  const flexHome = Math.max(4, Math.min(96, Math.round(homeProb * 100)))
+  // For finished games snap divider to edge; cap live/pre at 4–96 to keep both sides visible
+  const flexHome = isFinal
+    ? (game.homeTeam.isWinner ? 100 : 0)
+    : Math.max(4, Math.min(96, Math.round(homeProb * 100)))
   const flexAway = 100 - flexHome
 
   const homeScore = game.homeTeam.score
@@ -115,7 +118,9 @@ export function HeroGame({ game, probability, teamRecords = {} }) {
 
         {/* Center clock */}
         <div className="clock-block">
-          {isPre ? (
+          {isFinal ? (
+            <div className="clock-final">FINAL</div>
+          ) : isPre ? (
             <>
               <div className="clock-quarter">TIP</div>
               <div className="clock-time" style={{ fontSize: 18 }}>{game.statusText}</div>
@@ -125,7 +130,7 @@ export function HeroGame({ game, probability, teamRecords = {} }) {
             <>
               <div className="clock-quarter">{qLabel(game.period)}</div>
               <div className="clock-time">{fmtClock(game.clock)}</div>
-              <div className="clock-tag">{isFinal ? 'Final' : 'In Play'}</div>
+              <div className="clock-tag">In Play</div>
             </>
           )}
         </div>

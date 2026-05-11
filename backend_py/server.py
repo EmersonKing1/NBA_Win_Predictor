@@ -300,6 +300,9 @@ def _parse_event(ev: dict, rest: dict) -> dict | None:
         notes = comp.get("notes", [])
         for note in notes:
             headline = _clean(note.get("headline", ""))
+            # Strip round prefix: "East Semifinals - Game 4" → "Game 4"
+            if " - " in headline:
+                headline = headline.split(" - ", 1)[1]
             if headline:
                 series_note = headline
                 break

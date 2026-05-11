@@ -8,6 +8,28 @@ import { WPChart }        from './components/WPChart.jsx'
 import { GameSwitcher }   from './components/GameSwitcher.jsx'
 import { TEAM_COLORS }    from './teamColors.js'
 
+// ── Color differentiation ──────────────────────────────────────────────
+function hexToRgb(hex) {
+  const h = hex.replace('#', '')
+  return [parseInt(h.slice(0,2), 16), parseInt(h.slice(2,4), 16), parseInt(h.slice(4,6), 16)]
+}
+function colorDist(a, b) {
+  const [r1,g1,b1] = hexToRgb(a), [r2,g2,b2] = hexToRgb(b)
+  return Math.sqrt((r1-r2)**2 + (g1-g2)**2 + (b1-b2)**2)
+}
+function distinctAwayColor(homeHex, awayHex) {
+  if (!homeHex || !awayHex) return awayHex
+  if (colorDist(homeHex, awayHex) < 60) {
+    const [r,g,b] = hexToRgb(awayHex)
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000
+    const shift = brightness < 128 ? 100 : -100
+    return '#' + [r,g,b]
+      .map(v => Math.min(255, Math.max(0, Math.round(v + shift))).toString(16).padStart(2,'0'))
+      .join('')
+  }
+  return awayHex
+}
+
 function enrichGame(game) {
   const enrichTeam = t => ({
     ...t,
@@ -220,17 +242,20 @@ export default function App() {
               />
             )}
 
-            {/* WP Chart + Linescore */}
-            {activeGame && chartHistory.length > 2 && (
-              <div className="chart-row">
+            {/* WP Chart — full width */}
+            {activeGame && chartHistory.length > 2 && (() => {
+              const homeColor = activeGame.homeTeam.color ?? '#cc0000'
+              const awayColor = distinctAwayColor(
+                homeColor,
+                activeGame.awayTeam.color ?? '#f5a623'
+              )
+              return (
                 <div className="panel-card">
                   <div className="panel-card-head">
                     <div className="panel-card-title">
                       Win Probability ·{' '}
-                      {activeGame.status === 'in'
-                        ? 'Live'
-                        : activeGame.status === 'post'
-                        ? 'Final'
+                      {activeGame.status === 'in' ? 'Live'
+                        : activeGame.status === 'post' ? 'Final'
                         : 'Pre-Game'}
                     </div>
                     <div className="panel-card-sub">
@@ -240,18 +265,18 @@ export default function App() {
                   </div>
                   <WPChart
                     history={chartHistory}
-                    homeColor={activeGame.homeTeam.color ?? '#cc0000'}
-                    awayColor={activeGame.awayTeam.color ?? '#f5a623'}
+                    homeColor={homeColor}
+                    awayColor={awayColor}
                     homeAbbr={activeGame.homeTeam.abbreviation}
                     awayAbbr={activeGame.awayTeam.abbreviation}
                   />
                   <div className="chart-legend">
                     <span>
-                      <span className="chart-swatch" style={{ background: activeGame.homeTeam.color ?? '#cc0000' }} />
+                      <span className="chart-swatch" style={{ background: homeColor }} />
                       {activeGame.homeTeam.abbreviation} (Home)
                     </span>
                     <span>
-                      <span className="chart-swatch" style={{ background: activeGame.awayTeam.color ?? '#f5a623' }} />
+                      <span className="chart-swatch" style={{ background: awayColor }} />
                       {activeGame.awayTeam.abbreviation} (Away)
                     </span>
                     <span style={{ marginLeft: 'auto' }}>
@@ -261,43 +286,8 @@ export default function App() {
                     </span>
                   </div>
                 </div>
-
-                {/* Linescore */}
-                {activeGame.homeTeam.linescores?.length > 0 && (
-                  <div className="panel-card">
-                    <div className="panel-card-head">
-                      <div className="panel-card-title">Linescore</div>
-                      <div className="panel-card-sub">{activeGame.statusText}</div>
-                    </div>
-                    <div className="linescore-wrap">
-                      <div className="ls-col">
-                        <span className="ls-label"> </span>
-                        <span className="ls-val" style={{ fontSize: 10, color: 'var(--muted)' }}>{activeGame.homeTeam.abbreviation}</span>
-                        <span className="ls-val" style={{ fontSize: 10, color: 'var(--muted)' }}>{activeGame.awayTeam.abbreviation}</span>
-                      </div>
-                      {activeGame.homeTeam.linescores.map((pts, i) => (
-                        <div key={i} className="ls-col">
-                          <span className="ls-label">
-                            {i < 4 ? `Q${i + 1}` : i === 4 ? 'OT' : `OT${i - 3}`}
-                          </span>
-                          <span className="ls-val">{pts}</span>
-                          <span className="ls-val">{activeGame.awayTeam.linescores?.[i] ?? 0}</span>
-                        </div>
-                      ))}
-                      <div className="ls-col" style={{ marginLeft: 8, borderLeft: '1px solid var(--border)', paddingLeft: 8 }}>
-                        <span className="ls-label">TOT</span>
-                        <span className="ls-val" style={{ color: activeGame.homeTeam.isWinner ? 'var(--text)' : 'var(--muted)', fontWeight: 900 }}>
-                          {activeGame.homeTeam.score}
-                        </span>
-                        <span className="ls-val" style={{ color: activeGame.awayTeam.isWinner ? 'var(--text)' : 'var(--muted)', fontWeight: 900 }}>
-                          {activeGame.awayTeam.score}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+              )
+            })()}
 
             {/* Game switcher */}
             <GameSwitcher
