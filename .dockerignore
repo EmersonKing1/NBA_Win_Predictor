@@ -1,0 +1,7 @@
+frontend/
+build/
+.github/
+.vs/
+.claude/
+vcpkg_installed/
+*.md

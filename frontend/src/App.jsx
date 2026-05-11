@@ -1,4 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
+
+const API = import.meta.env.VITE_BACKEND_URL ?? ''
+
 import { RecentGameCard } from './components/RecentGameCard.jsx'
 import { HeroGame } from './components/HeroGame.jsx'
 import { StatsStrip } from './components/StatsStrip.jsx'
@@ -53,13 +56,13 @@ export default function App() {
   useEffect(() => {
     const fetchLive = async () => {
       try {
-        const data = await fetch('/games').then(r => r.json())
+        const data = await fetch(`${API}/games`).then(r => r.json())
         const gs = (data.games ?? []).map(enrichGame)
         setGames(gs)
         setError(null)
         if (gs.length > 0) {
           const results = await Promise.allSettled(
-            gs.map(g => fetch(`/probability/${g.id}`).then(r => r.json()))
+            gs.map(g => fetch(`${API}/probability/${g.id}`).then(r => r.json()))
           )
           const map = {}
           results.forEach((r, i) => {
@@ -96,7 +99,7 @@ export default function App() {
 
     const fetchRecent = async () => {
       try {
-        const data = await fetch('/recent-games').then(r => r.json())
+        const data = await fetch(`${API}/recent-games`).then(r => r.json())
         setRecent((data.games ?? []).map(enrichGame))
       } catch (_) {}
     }
