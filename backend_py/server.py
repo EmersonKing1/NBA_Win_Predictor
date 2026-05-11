@@ -21,6 +21,7 @@ Usage:
 """
 
 import time
+import json
 import threading
 import joblib
 import numpy as np
@@ -34,8 +35,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # ── Paths ──────────────────────────────────────────────────────────────
-BASE       = Path(__file__).parent
-MODEL_PATH = BASE / "data" / "model.pkl"
+BASE        = Path(__file__).parent
+MODEL_PATH  = BASE / "data" / "model.pkl"
+STATS_PATH  = BASE / "data" / "stats_snapshot.json"
 
 # ── Model ──────────────────────────────────────────────────────────────
 _bundle = None   # {"scaler": StandardScaler, "model": LR, "features": [...]}
@@ -78,8 +80,20 @@ def _clean(s: str) -> str:
         return s
 
 
+def _load_stats_snapshot():
+    """Load stats from disk immediately — guarantees the model has data even if
+    the NBA API is unreachable (rate-limited, cold-start delay, etc.)."""
+    global _stats
+    if STATS_PATH.exists():
+        try:
+            _stats = json.loads(STATS_PATH.read_text())
+            print(f"[stats] snapshot loaded — {len(_stats)} teams")
+        except Exception as exc:
+            print(f"[stats] snapshot load failed: {exc}")
+
+
 def refresh_team_stats(season: str = "2024-25"):
-    """Pull advanced stats from NBA API and populate _stats cache."""
+    """Pull fresh advanced stats from NBA API, update cache, and persist snapshot."""
     global _stats, _stats_ts
     try:
         from nba_api.stats.endpoints import LeagueDashTeamStats
@@ -91,7 +105,7 @@ def refresh_team_stats(season: str = "2024-25"):
             season=season,
             measure_type_detailed_defense="Advanced",
             per_mode_detailed="PerGame",
-            timeout=30,
+            timeout=60,
         ).get_data_frames()[0]
 
         cache: dict = {}
@@ -108,7 +122,9 @@ def refresh_team_stats(season: str = "2024-25"):
                 }
         _stats = cache
         _stats_ts = time.time()
-        print(f"[stats] refreshed — {len(cache)} teams  ({season})")
+        # Persist so next cold-start has immediate stats without an API call
+        STATS_PATH.write_text(json.dumps(cache))
+        print(f"[stats] refreshed and saved — {len(cache)} teams  ({season})")
     except Exception as exc:
         print(f"[stats] refresh failed: {exc}")
 
@@ -360,6 +376,7 @@ def _public(g: dict) -> dict:
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     load_model()
+    _load_stats_snapshot()
     threading.Thread(target=refresh_team_stats, daemon=True).start()
     yield
 
