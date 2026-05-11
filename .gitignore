@@ -1,0 +1,14 @@
+build/
+node_modules/
+frontend/dist/
+*.exe
+*.dll
+*.obj
+*.pdb
+*.lib
+*.ilk
+vcpkg_installed/
+.vs/
+.claude/
+frontend/.env
+frontend/.env.local
