@@ -52,32 +52,40 @@ PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 FEATURES = [
     # Rating edges
-    "ortg_diff",      # offensive quality edge
-    "drtg_diff",      # defensive quality edge (away_drtg - home_drtg → positive = home better)
+    "ortg_diff",       # offensive quality edge
+    "drtg_diff",       # defensive quality edge (away_drtg - home_drtg → positive = home better)
     # Dean Oliver Four Factors
-    "efg_diff",       # effective FG% edge — shooting efficiency
-    "tov_diff",       # turnover edge — away_tov% - home_tov% (positive = home advantage)
-    "oreb_diff",      # offensive rebound % edge
+    "efg_diff",        # effective FG% edge — shooting efficiency
+    "tov_diff",        # turnover edge — away_tov% - home_tov% (positive = home advantage)
+    "oreb_diff",       # offensive rebound % edge
     # Prior season performance
-    "w_pct_diff",     # win rate edge — captures clutch / game-closing ability
+    "w_pct_diff",      # overall win rate edge
+    "home_site_diff",  # home team's home W% minus away team's road W%
+                       # captures location-specific performance (some teams win at home
+                       # but struggle on the road more than their overall W% suggests)
+    # Recent form
+    "l10_diff",        # rolling last-10-games W% differential
+                       # captures momentum: a hot team mid-season vs a slumping one
     # Schedule / fatigue
-    "home_rest",      # days since home team's last game (0–7, capped)
-    "away_rest",      # days since away team's last game
-    "home_b2b",       # 1 if home team played last night (explicit B2B threshold)
-    "away_b2b",       # 1 if away team played last night
+    "home_rest",       # days since home team's last game (0–7, capped)
+    "away_rest",       # days since away team's last game
+    "home_b2b",        # 1 if home team played last night (explicit B2B threshold)
+    "away_b2b",        # 1 if away team played last night
 ]
 
 
 def engineer(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
-    df["ortg_diff"]  = df["home_ortg"]     - df["away_ortg"]
-    df["drtg_diff"]  = df["away_drtg"]     - df["home_drtg"]
-    df["efg_diff"]   = df["home_efg_pct"]  - df["away_efg_pct"]
-    df["tov_diff"]   = df["away_tov_pct"]  - df["home_tov_pct"]   # flipped: positive = home advantage
-    df["oreb_diff"]  = df["home_oreb_pct"] - df["away_oreb_pct"]
-    df["w_pct_diff"] = df["home_w_pct"]    - df["away_w_pct"]
-    df["home_b2b"]   = (df["home_rest"] == 1).astype(int)
-    df["away_b2b"]   = (df["away_rest"] == 1).astype(int)
+    df["ortg_diff"]      = df["home_ortg"]      - df["away_ortg"]
+    df["drtg_diff"]      = df["away_drtg"]      - df["home_drtg"]
+    df["efg_diff"]       = df["home_efg_pct"]   - df["away_efg_pct"]
+    df["tov_diff"]       = df["away_tov_pct"]   - df["home_tov_pct"]   # flipped: positive = home advantage
+    df["oreb_diff"]      = df["home_oreb_pct"]  - df["away_oreb_pct"]
+    df["w_pct_diff"]     = df["home_w_pct"]     - df["away_w_pct"]
+    df["home_site_diff"] = df["home_home_wpct"] - df["away_road_wpct"]  # location-specific advantage
+    df["l10_diff"]       = df["home_l10_wpct"]  - df["away_l10_wpct"]   # recent form edge
+    df["home_b2b"]       = (df["home_rest"] == 1).astype(int)
+    df["away_b2b"]       = (df["away_rest"] == 1).astype(int)
     return df
 
 

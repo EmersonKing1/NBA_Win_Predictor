@@ -12,6 +12,10 @@ export function RecentGameCard({ game, onPick, isActive }) {
   const homePct = Math.round((game.homeWinProbability ?? (homeWon ? 1 : 0)) * 100)
   const awayPct = Math.round((game.awayWinProbability ?? (awayWon ? 1 : 0)) * 100)
 
+  const winnerColor = homeWon
+    ? (game.homeTeam.color ?? null)
+    : (game.awayTeam.color ?? null)
+
   const winnerPct = homeWon ? homePct : awayPct
   const isUpset   = winnerPct < 35
 
@@ -49,7 +53,7 @@ export function RecentGameCard({ game, onPick, isActive }) {
       <div className="recent-card-body">
         <TeamRow team={game.homeTeam} won={homeWon} />
         <TeamRow team={game.awayTeam} won={awayWon} />
-        <div className="recent-pbar" style={{ '--left': homePct }} />
+        <div className="recent-pbar" style={{ '--left': homePct, '--winner-color': winnerColor ?? 'var(--red)' }} />
       </div>
 
       {isActive && (

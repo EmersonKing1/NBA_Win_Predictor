@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { distinctAwayColor } from '../utils.js'
 
 function TeamLogo({ logo, abbr, color }) {
   if (logo) {
@@ -17,10 +18,21 @@ function TeamLogo({ logo, abbr, color }) {
 
 function statusLabel(game) {
   if (game.status === 'post') return 'FINAL'
-  if (game.status === 'pre') return 'PRE'
+  if (game.status === 'pre') {
+    // Show time from statusText (e.g. "7:30 PM ET"), strip trailing "ET" duplication if needed
+    const t = game.statusText ?? ''
+    return t || 'TBD'
+  }
   const p = game.period
   const q = p > 4 ? `OT${p - 4 > 1 ? p - 4 : ''}` : `Q${p}`
   return `${q} · ${game.clock}`
+}
+
+function fmtDate(dateStr) {
+  if (!dateStr) return ''
+  const [, m, d] = dateStr.split('-')
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${months[parseInt(m,10)-1]} ${parseInt(d,10)}`
 }
 
 export function GameSwitcher({ games, probs, activeId, onPick }) {
@@ -50,6 +62,7 @@ export function GameSwitcher({ games, probs, activeId, onPick }) {
         </div>
       </div>
 
+      <div className="switcher-wrap">
       <div className="switcher" ref={ref}>
         {sorted.map(game => {
           const home = game.homeTeam
@@ -63,6 +76,8 @@ export function GameSwitcher({ games, probs, activeId, onPick }) {
           const isLive   = game.status === 'in'
           const homeFinal = isFinal && home.isWinner
           const awayFinal = isFinal && away.isWinner
+          const homeColor = home.color ?? '#cc0000'
+          const awayColor = distinctAwayColor(homeColor, away.color ?? '#888888')
 
           return (
             <button
@@ -76,8 +91,11 @@ export function GameSwitcher({ games, probs, activeId, onPick }) {
                   {isLive && <span className="gc-live-dot" />}
                   {statusLabel(game)}
                 </span>
-                <span>{game.id === activeId ? 'FEATURED' : 'VIEW'}</span>
+                <span>{game.id === activeId ? 'FEATURED' : ''}</span>
               </div>
+              {game.seriesNote && (
+                <div className="gc-series-note">{game.seriesNote}</div>
+              )}
 
               {/* Score rows */}
               <div className="gc-body">
@@ -97,17 +115,18 @@ export function GameSwitcher({ games, probs, activeId, onPick }) {
               {/* Probability bar */}
               <div className="gc-prob-section">
                 <div className="gc-bar">
-                  <div className="gc-bar-fill" style={{ width: pctHome + '%', background: home.color ?? 'var(--red)' }} />
-                  <div className="gc-bar-fill" style={{ width: pctAway + '%', background: away.color ?? 'var(--muted)' }} />
+                  <div className="gc-bar-fill" style={{ width: pctHome + '%', background: homeColor }} />
+                  <div className="gc-bar-fill" style={{ width: pctAway + '%', background: awayColor }} />
                 </div>
                 <div className="gc-probs">
-                  <span style={{ color: home.color ?? 'var(--red)' }}>{pctHome}%</span>
-                  <span style={{ color: away.color ?? 'var(--muted)' }}>{pctAway}%</span>
+                  <span style={{ color: homeColor }}>{pctHome}%</span>
+                  <span style={{ color: awayColor }}>{pctAway}%</span>
                 </div>
               </div>
             </button>
           )
         })}
+      </div>
       </div>
     </div>
   )

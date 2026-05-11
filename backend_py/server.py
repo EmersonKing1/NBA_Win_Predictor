@@ -54,8 +54,15 @@ def load_model():
 
 # ── Team stats cache ───────────────────────────────────────────────────
 # Current-season advanced stats fetched from NBA API at startup, refreshed daily.
-_stats: dict = {}     # NBA abbreviation → {ortg, drtg, efg_pct, tov_pct, oreb_pct, w_pct}
+_stats: dict = {}     # NBA abbr → {ortg, drtg, efg_pct, tov_pct, oreb_pct, w_pct, home_wpct, road_wpct, l10_wpct}
 _stats_ts: float = 0  # unix timestamp of last successful refresh
+
+# ── Rest-days cache (background-refreshed every 5 min) ─────────────────
+_rest: dict = {}      # ESPN abbr → days since last game
+_rest_ts: float = 0.0
+
+# ── Per-game probability cache (stale fallback on ESPN errors) ──────────
+_prob_cache: dict = {}  # game_id → {homeWinProbability, awayWinProbability}
 
 # ESPN uses slightly different abbreviations for some franchises
 _ESPN_TO_NBA: dict = {
@@ -93,7 +100,7 @@ def _load_stats_snapshot():
 
 
 def refresh_team_stats(season: str = "2024-25"):
-    """Pull fresh advanced stats from NBA API, update cache, and persist snapshot."""
+    """Pull fresh advanced stats + home/road splits + L10 from NBA API."""
     global _stats, _stats_ts
     try:
         from nba_api.stats.endpoints import LeagueDashTeamStats
@@ -101,28 +108,63 @@ def refresh_team_stats(season: str = "2024-25"):
 
         id_to_abbr = {t["id"]: t["abbreviation"] for t in nba_teams.get_teams()}
 
-        df = LeagueDashTeamStats(
+        # 1. Full-season advanced stats
+        df_adv = LeagueDashTeamStats(
             season=season,
             measure_type_detailed_defense="Advanced",
             per_mode_detailed="PerGame",
             timeout=60,
         ).get_data_frames()[0]
+        time.sleep(0.7)
+
+        # 2. Home-court W% (how each team performs at home)
+        df_home = LeagueDashTeamStats(
+            season=season,
+            location_nullable="Home",
+            per_mode_detailed="PerGame",
+            timeout=60,
+        ).get_data_frames()[0]
+        time.sleep(0.7)
+
+        # 3. Road W% (how each team performs on the road)
+        df_road = LeagueDashTeamStats(
+            season=season,
+            location_nullable="Road",
+            per_mode_detailed="PerGame",
+            timeout=60,
+        ).get_data_frames()[0]
+        time.sleep(0.7)
+
+        # 4. Last-10-games W% (recent form)
+        df_l10 = LeagueDashTeamStats(
+            season=season,
+            last_n_games_nullable=10,
+            per_mode_detailed="PerGame",
+            timeout=60,
+        ).get_data_frames()[0]
+
+        home_wpct = {int(r["TEAM_ID"]): float(r["W_PCT"]) for _, r in df_home.iterrows()}
+        road_wpct = {int(r["TEAM_ID"]): float(r["W_PCT"]) for _, r in df_road.iterrows()}
+        l10_wpct  = {int(r["TEAM_ID"]): float(r["W_PCT"]) for _, r in df_l10.iterrows()}
 
         cache: dict = {}
-        for _, row in df.iterrows():
-            abbr = id_to_abbr.get(int(row["TEAM_ID"]), "")
+        for _, row in df_adv.iterrows():
+            tid  = int(row["TEAM_ID"])
+            abbr = id_to_abbr.get(tid, "")
             if abbr:
                 cache[abbr] = {
-                    "ortg":     float(row["OFF_RATING"]),
-                    "drtg":     float(row["DEF_RATING"]),
-                    "efg_pct":  float(row["EFG_PCT"]),
-                    "tov_pct":  float(row["TM_TOV_PCT"]),
-                    "oreb_pct": float(row["OREB_PCT"]),
-                    "w_pct":    float(row["W_PCT"]),
+                    "ortg":      float(row["OFF_RATING"]),
+                    "drtg":      float(row["DEF_RATING"]),
+                    "efg_pct":   float(row["EFG_PCT"]),
+                    "tov_pct":   float(row["TM_TOV_PCT"]),
+                    "oreb_pct":  float(row["OREB_PCT"]),
+                    "w_pct":     float(row["W_PCT"]),
+                    "home_wpct": home_wpct.get(tid, 0.5),
+                    "road_wpct": road_wpct.get(tid, 0.5),
+                    "l10_wpct":  l10_wpct.get(tid, 0.5),
                 }
         _stats = cache
         _stats_ts = time.time()
-        # Persist so next cold-start has immediate stats without an API call
         STATS_PATH.write_text(json.dumps(cache))
         print(f"[stats] refreshed and saved — {len(cache)} teams  ({season})")
     except Exception as exc:
@@ -142,8 +184,9 @@ def _sigmoid(x: float) -> float:
 def _pregame_logit(home: str, away: str, h_rest: int, a_rest: int) -> float:
     """
     Return log-odds of home win from the trained model.
+    Feature vector is built dynamically from _bundle["features"] so old and new
+    model.pkl files both work without code changes.
     Falls back to a fixed baseline (~55% home court) when stats are missing.
-    Feature order must match FEATURES list in train.py exactly.
     """
     h = _stats.get(_norm(home), {})
     a = _stats.get(_norm(away), {})
@@ -154,19 +197,24 @@ def _pregame_logit(home: str, away: str, h_rest: int, a_rest: int) -> float:
     h_rest_c = min(h_rest, 7)
     a_rest_c = min(a_rest, 7)
 
-    feats = np.array([[
-        h["ortg"]     - a["ortg"],           # ortg_diff
-        a["drtg"]     - h["drtg"],           # drtg_diff (positive → home better defense)
-        h["efg_pct"]  - a["efg_pct"],        # efg_diff
-        a["tov_pct"]  - h["tov_pct"],        # tov_diff (flipped: positive → home advantage)
-        h["oreb_pct"] - a["oreb_pct"],       # oreb_diff
-        h["w_pct"]    - a["w_pct"],          # w_pct_diff
-        h_rest_c,                            # home_rest
-        a_rest_c,                            # away_rest
-        int(h_rest_c == 1),                  # home_b2b
-        int(a_rest_c == 1),                  # away_b2b
-    ]])
+    # All recognised features — model uses whichever subset it was trained on
+    all_feats: dict = {
+        "ortg_diff":      h["ortg"]    - a["ortg"],
+        "drtg_diff":      a["drtg"]    - h["drtg"],
+        "efg_diff":       h["efg_pct"] - a["efg_pct"],
+        "tov_diff":       a["tov_pct"] - h["tov_pct"],
+        "oreb_diff":      h["oreb_pct"]- a["oreb_pct"],
+        "w_pct_diff":     h["w_pct"]   - a["w_pct"],
+        "home_rest":      float(h_rest_c),
+        "away_rest":      float(a_rest_c),
+        "home_b2b":       float(h_rest_c == 1),
+        "away_b2b":       float(a_rest_c == 1),
+        "home_site_diff": h.get("home_wpct", 0.5) - a.get("road_wpct", 0.5),
+        "l10_diff":       h.get("l10_wpct",  0.5) - a.get("l10_wpct",  0.5),
+    }
 
+    feat_vals = [all_feats[f] for f in _bundle["features"]]
+    feats  = np.array([feat_vals])
     scaled = _bundle["scaler"].transform(feats)
     return float(_bundle["model"].decision_function(scaled)[0])
 
@@ -210,10 +258,6 @@ ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreb
 # /probability/:id call — frontend polls each game every 7 seconds)
 _sb_cache:   dict = {"data": None, "exp": 0.0}
 
-# 5-minute cache for rest-days map (expensive: 7 × ESPN requests)
-_rest_cache: dict = {"data": {}, "exp": 0.0}
-
-
 def _get_scoreboard(dates: str = "") -> dict:
     url = f"{ESPN_BASE}?dates={dates}" if dates else ESPN_BASE
     now = time.time()
@@ -226,10 +270,11 @@ def _get_scoreboard(dates: str = "") -> dict:
     return data
 
 
-def _get_rest_map() -> dict:
-    now = time.time()
-    if _rest_cache["exp"] > now:
-        return _rest_cache["data"]
+def refresh_rest_map():
+    """Build rest-days map from the last 7 days of ESPN scoreboards.
+    Runs in a background thread so routes never block on 7 sequential ESPN calls.
+    """
+    global _rest, _rest_ts
     rest: dict = {}
     today = datetime.utcnow()
     for delta in range(1, 8):
@@ -246,9 +291,19 @@ def _get_rest_map() -> dict:
                         rest[abbr] = delta
         except Exception:
             pass
-    _rest_cache["data"] = rest
-    _rest_cache["exp"]  = now + 300.0   # 5-minute TTL
-    return rest
+    _rest = rest
+    _rest_ts = time.time()
+    print(f"[rest] refreshed — {len(rest)} teams mapped")
+
+
+def _get_rest_map() -> dict:
+    """Return the current rest cache immediately (never blocks)."""
+    return _rest
+
+
+def _maybe_refresh_rest():
+    if time.time() - _rest_ts > 300:   # 5-min TTL
+        threading.Thread(target=refresh_rest_map, daemon=True).start()
 
 
 def _parse_team(competitor: dict) -> dict:
@@ -302,7 +357,7 @@ def _parse_event(ev: dict, rest: dict) -> dict | None:
             q = f"Q{period}" if period <= 4 else "OT" + (str(period - 4) if period > 5 else "")
             status_text = f"{q} {clock}"
         else:
-            status_text = stype.get("shortDetail", "Scheduled")
+            status_text = stype.get("shortDetail", "Scheduled").replace("EDT", "EST").replace("PDT", "PST")
 
         venues    = ev.get("venues", [])
         venue_str = venues[0].get("fullName", "") if venues else ""
@@ -378,6 +433,7 @@ async def lifespan(_app: FastAPI):
     load_model()
     _load_stats_snapshot()
     threading.Thread(target=refresh_team_stats, daemon=True).start()
+    threading.Thread(target=refresh_rest_map,   daemon=True).start()
     yield
 
 
@@ -393,17 +449,21 @@ app.add_middleware(
 # ── Routes ─────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
+    now = time.time()
     return {
-        "ok":     True,
-        "model":  _bundle is not None,
-        "teams":  len(_stats),
-        "ts":     int(_stats_ts),
+        "ok":          True,
+        "model":       _bundle is not None,
+        "teams":       len(_stats),
+        "statsAgeMin": round((now - _stats_ts) / 60, 1) if _stats_ts else None,
+        "restTeams":   len(_rest),
+        "restAgeMin":  round((now - _rest_ts)  / 60, 1) if _rest_ts  else None,
     }
 
 
 @app.get("/games")
 def get_games():
     _maybe_refresh_stats()
+    _maybe_refresh_rest()
     try:
         data  = _get_scoreboard()
         rest  = _get_rest_map()
@@ -417,22 +477,29 @@ def get_games():
 @app.get("/probability/{game_id}")
 def get_probability(game_id: str):
     _maybe_refresh_stats()
+    _maybe_refresh_rest()
     try:
-        data  = _get_scoreboard()
-        rest  = _get_rest_map()
+        data = _get_scoreboard()
+        rest = _get_rest_map()
         for ev in data.get("events", []):
             if ev.get("id") == game_id:
                 g = _parse_event(ev, rest)
                 if g:
                     hp, ap = _compute_prob(g)
-                    return {"homeWinProbability": hp, "awayWinProbability": ap}
+                    result = {"homeWinProbability": hp, "awayWinProbability": ap}
+                    _prob_cache[game_id] = result   # update stale fallback
+                    return result
     except Exception as exc:
         print(f"[prob] {game_id}: {exc}")
+    # Return last-known probability on transient errors instead of 50/50
+    if game_id in _prob_cache:
+        return {**_prob_cache[game_id], "stale": True}
     return {"homeWinProbability": 0.5, "awayWinProbability": 0.5}
 
 
 @app.get("/recent-games")
 def get_recent_games():
+    _maybe_refresh_rest()
     try:
         today = datetime.utcnow()
         rest  = _get_rest_map()

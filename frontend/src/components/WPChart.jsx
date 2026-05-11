@@ -51,12 +51,12 @@ export function WPChart({ history, homeColor, awayColor, homeAbbr, awayAbbr }) {
       <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
         <defs>
           <linearGradient id={hFillId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stopColor={homeColor} stopOpacity="0.22" />
-            <stop offset="100%" stopColor={homeColor} stopOpacity="0.02" />
+            <stop offset="0%"   stopColor={homeColor} stopOpacity="0.28" />
+            <stop offset="100%" stopColor={homeColor} stopOpacity="0.04" />
           </linearGradient>
           <linearGradient id={aFillId} x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%"   stopColor={awayColor} stopOpacity="0.22" />
-            <stop offset="100%" stopColor={awayColor} stopOpacity="0.02" />
+            <stop offset="0%"   stopColor={awayColor} stopOpacity="0.28" />
+            <stop offset="100%" stopColor={awayColor} stopOpacity="0.04" />
           </linearGradient>
           <filter id={hGlowId} x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="2.5" result="blur" />
@@ -73,7 +73,7 @@ export function WPChart({ history, homeColor, awayColor, homeAbbr, awayAbbr }) {
           <line key={g}
             x1={padL} x2={W - padR}
             y1={padT + g * innerH} y2={padT + g * innerH}
-            stroke={g === 0.5 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.06)'}
+            stroke={g === 0.5 ? 'rgba(0,0,0,0.18)' : 'rgba(0,0,0,0.07)'}
             strokeDasharray={g === 0.5 ? '' : '2 4'}
           />
         ))}
@@ -81,7 +81,7 @@ export function WPChart({ history, homeColor, awayColor, homeAbbr, awayAbbr }) {
         {[1, 0.75, 0.5, 0.25, 0].map(g => (
           <text key={g}
             x={padL - 8} y={padT + (1 - g) * innerH + 3}
-            fill="rgba(255,255,255,0.35)" fontSize="9"
+            fill="rgba(0,0,0,0.42)" fontSize="9"
             fontFamily="JetBrains Mono, monospace" textAnchor="end"
           >{Math.round(g * 100)}%</text>
         ))}
@@ -90,19 +90,16 @@ export function WPChart({ history, homeColor, awayColor, homeAbbr, awayAbbr }) {
           <line key={i}
             x1={padL + g * innerW} x2={padL + g * innerW}
             y1={padT} y2={padT + innerH}
-            stroke="rgba(255,255,255,0.10)" strokeDasharray="3 4"
+            stroke="rgba(0,0,0,0.09)" strokeDasharray="3 4"
           />
         ))}
 
-        {/* Fills */}
-        <path d={fillAway} fill={`url(#${aFillId})`} />
-        <path d={fillHome} fill={`url(#${hFillId})`} />
 
         {/* 50% center reference */}
         <line
           x1={padL} x2={W - padR}
           y1={padT + 0.5 * innerH} y2={padT + 0.5 * innerH}
-          stroke="rgba(255,255,255,0.22)"
+          stroke="rgba(0,0,0,0.18)"
         />
 
         {/* Away line — drawn first so home line sits on top */}
@@ -128,7 +125,7 @@ export function WPChart({ history, homeColor, awayColor, homeAbbr, awayAbbr }) {
         {hover && (
           <>
             <line x1={hover.x} x2={hover.x} y1={padT} y2={padT + innerH}
-              stroke="rgba(255,255,255,0.35)" strokeDasharray="2 3" strokeWidth="1.5" />
+              stroke="rgba(0,0,0,0.25)" strokeDasharray="2 3" strokeWidth="1.5" />
             <circle cx={hover.x} cy={hover.yAway} r="3.5" fill="white" stroke={awayColor} strokeWidth="1.5" />
             <circle cx={hover.x} cy={hover.yHome} r="4.5" fill="white" stroke={homeColor} strokeWidth="2" />
           </>

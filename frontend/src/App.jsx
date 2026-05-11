@@ -7,28 +7,7 @@ import { HeroGame }       from './components/HeroGame.jsx'
 import { WPChart }        from './components/WPChart.jsx'
 import { GameSwitcher }   from './components/GameSwitcher.jsx'
 import { TEAM_COLORS }    from './teamColors.js'
-
-// ── Color differentiation ──────────────────────────────────────────────
-function hexToRgb(hex) {
-  const h = hex.replace('#', '')
-  return [parseInt(h.slice(0,2), 16), parseInt(h.slice(2,4), 16), parseInt(h.slice(4,6), 16)]
-}
-function colorDist(a, b) {
-  const [r1,g1,b1] = hexToRgb(a), [r2,g2,b2] = hexToRgb(b)
-  return Math.sqrt((r1-r2)**2 + (g1-g2)**2 + (b1-b2)**2)
-}
-function distinctAwayColor(homeHex, awayHex) {
-  if (!homeHex || !awayHex) return awayHex
-  if (colorDist(homeHex, awayHex) < 60) {
-    const [r,g,b] = hexToRgb(awayHex)
-    const brightness = (r * 299 + g * 587 + b * 114) / 1000
-    const shift = brightness < 128 ? 100 : -100
-    return '#' + [r,g,b]
-      .map(v => Math.min(255, Math.max(0, Math.round(v + shift))).toString(16).padStart(2,'0'))
-      .join('')
-  }
-  return awayHex
-}
+import { distinctAwayColor } from './utils.js'
 
 function enrichGame(game) {
   const enrichTeam = t => ({
@@ -70,13 +49,14 @@ const POLL_INTERVAL        = 7000
 const RECENT_POLL_INTERVAL = 60000
 
 export default function App() {
-  const [games, setGames]        = useState([])
-  const [probs, setProbs]        = useState({})
-  const [recentGames, setRecent] = useState([])
-  const [error, setError]        = useState(null)
-  const [loading, setLoading]    = useState(true)
-  const [clockStr, setClock]     = useState('—')
-  const [activeId, setActiveId]  = useState(null)
+  const [games, setGames]          = useState([])
+  const [probs, setProbs]          = useState({})
+  const [recentGames, setRecent]   = useState([])
+  const [error, setError]          = useState(null)
+  const [loading, setLoading]      = useState(true)
+  const [clockStr, setClock]       = useState('—')
+  const [activeId, setActiveId]    = useState(null)
+  const [lastUpdated, setLastUpdated] = useState(null)
 
   // WP chart data
   const [wpHistory, setWpHistory]         = useState({})    // live poll history
@@ -119,15 +99,20 @@ export default function App() {
           })
           setProbs(prev => ({ ...prev, ...map }))
 
-          // Accumulate live WP history for in-progress games
+          setLastUpdated(Date.now())
+
+          // Accumulate live WP history for in-progress games; drop finished games
           setWpHistory(prev => {
             const next = { ...prev }
             for (const g of gs) {
-              if (g.status !== 'in') continue
-              const wp = map[g.id]?.homeWinProbability ?? 0.5
-              const arr = (next[g.id] ?? []).slice(-200)
-              arr.push({ homeWP: wp })
-              next[g.id] = arr
+              if (g.status === 'post') {
+                delete next[g.id]   // post games use ESPN history; no need to hold polling data
+              } else if (g.status === 'in') {
+                const wp = map[g.id]?.homeWinProbability ?? 0.5
+                const arr = (next[g.id] ?? []).slice(-200)
+                arr.push({ homeWP: wp })
+                next[g.id] = arr
+              }
             }
             return next
           })
@@ -188,10 +173,19 @@ export default function App() {
   const activeGame = allGames.find(g => g.id === activeId) ?? allGames[0] ?? null
   const activeProb = activeGame ? probs[activeGame.id] : null
 
+  // Canonical team colors — shared by HeroGame bar, WPChart, and chart legend
+  const activeHomeColor = activeGame?.homeTeam.color ?? '#cc0000'
+  const activeAwayColor = activeGame
+    ? distinctAwayColor(activeHomeColor, activeGame.awayTeam.color ?? '#f5a623')
+    : '#f5a623'
+
   // ESPN history takes priority for the chart (full game); fall back to polled history
   const chartHistory = espnHistory[activeGame?.id] ?? wpHistory[activeGame?.id] ?? []
 
   const handlePick = (id) => setActiveId(id)
+
+  const secondsAgo = lastUpdated ? Math.floor((Date.now() - lastUpdated) / 1000) : null
+  const updatedClass = secondsAgo === null ? '' : secondsAgo < 8 ? 'fresh' : secondsAgo > 20 ? 'stale' : ''
 
   return (
     <div className="app">
@@ -208,7 +202,12 @@ export default function App() {
         <div className="masthead-meta">
           {liveCount > 0 && <span className="pulse-pill">LIVE</span>}
           <span>{liveCount > 0 ? `${liveCount} GAME${liveCount > 1 ? 'S' : ''}` : 'NO LIVE GAMES'}</span>
-          <span className="masthead-clock">{clockStr} ET</span>
+          {secondsAgo !== null && (
+            <span className={`masthead-updated${updatedClass ? ` ${updatedClass}` : ''}`}>
+              {secondsAgo}s ago
+            </span>
+          )}
+          <span className="masthead-clock">{clockStr} EST</span>
         </div>
       </header>
 
@@ -239,55 +238,50 @@ export default function App() {
                 game={activeGame}
                 probability={activeProb}
                 teamRecords={teamRecords}
+                homeColor={activeHomeColor}
+                awayColor={activeAwayColor}
               />
             )}
 
             {/* WP Chart — full width */}
-            {activeGame && chartHistory.length > 2 && (() => {
-              const homeColor = activeGame.homeTeam.color ?? '#cc0000'
-              const awayColor = distinctAwayColor(
-                homeColor,
-                activeGame.awayTeam.color ?? '#f5a623'
-              )
-              return (
-                <div className="panel-card">
-                  <div className="panel-card-head">
-                    <div className="panel-card-title">
-                      Win Probability ·{' '}
-                      {activeGame.status === 'in' ? 'Live'
-                        : activeGame.status === 'post' ? 'Final'
-                        : 'Pre-Game'}
-                    </div>
-                    <div className="panel-card-sub">
-                      {activeGame.homeTeam.abbreviation} vs {activeGame.awayTeam.abbreviation}
-                      {activeGame.status === 'post' && ' · Full Game'}
-                    </div>
+            {activeGame && chartHistory.length > 2 && (
+              <div className="panel-card">
+                <div className="panel-card-head">
+                  <div className="panel-card-title">
+                    Win Probability ·{' '}
+                    {activeGame.status === 'in' ? 'Live'
+                      : activeGame.status === 'post' ? 'Final'
+                      : 'Pre-Game'}
                   </div>
-                  <WPChart
-                    history={chartHistory}
-                    homeColor={homeColor}
-                    awayColor={awayColor}
-                    homeAbbr={activeGame.homeTeam.abbreviation}
-                    awayAbbr={activeGame.awayTeam.abbreviation}
-                  />
-                  <div className="chart-legend">
-                    <span>
-                      <span className="chart-swatch" style={{ background: homeColor }} />
-                      {activeGame.homeTeam.abbreviation} (Home)
-                    </span>
-                    <span>
-                      <span className="chart-swatch" style={{ background: awayColor }} />
-                      {activeGame.awayTeam.abbreviation} (Away)
-                    </span>
-                    <span style={{ marginLeft: 'auto' }}>
-                      {activeGame.status === 'in'
-                        ? `HOVER TO SCRUB · ${chartHistory.length} FRAMES`
-                        : `${chartHistory.length} PLAYS`}
-                    </span>
+                  <div className="panel-card-sub">
+                    {activeGame.homeTeam.abbreviation} vs {activeGame.awayTeam.abbreviation}
+                    {activeGame.status === 'post' && ' · Full Game'}
                   </div>
                 </div>
-              )
-            })()}
+                <WPChart
+                  history={chartHistory}
+                  homeColor={activeHomeColor}
+                  awayColor={activeAwayColor}
+                  homeAbbr={activeGame.homeTeam.abbreviation}
+                  awayAbbr={activeGame.awayTeam.abbreviation}
+                />
+                <div className="chart-legend">
+                  <span>
+                    <span className="chart-swatch" style={{ background: activeHomeColor }} />
+                    {activeGame.homeTeam.abbreviation} (Home)
+                  </span>
+                  <span>
+                    <span className="chart-swatch" style={{ background: activeAwayColor }} />
+                    {activeGame.awayTeam.abbreviation} (Away)
+                  </span>
+                  <span style={{ marginLeft: 'auto' }}>
+                    {activeGame.status === 'in'
+                      ? `HOVER TO SCRUB · ${chartHistory.length} FRAMES`
+                      : `${chartHistory.length} PLAYS`}
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Game switcher */}
             <GameSwitcher
@@ -316,10 +310,6 @@ export default function App() {
               </div>
             )}
 
-            <div className="footer-note">
-              <span>Win % · Logistic Regression on {activeGame?.status === 'in' ? 'live' : 'pre-game'} team stats</span>
-              <span className="footer-arrow">↻ LIVE EVERY 7S</span>
-            </div>
           </>
         )}
       </div>

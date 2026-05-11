@@ -15,6 +15,13 @@ function TeamLogo({ logo, abbr, color, dim }) {
   )
 }
 
+function fmtDate(dateStr) {
+  if (!dateStr) return ''
+  const [, m, d] = dateStr.split('-')
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  return `${months[parseInt(m,10)-1]} ${parseInt(d,10)}`
+}
+
 function fmtClock(clockStr) {
   if (!clockStr || clockStr === '0:00') return '0:00'
   return clockStr
@@ -26,7 +33,7 @@ function qLabel(period) {
   return `Q${period}`
 }
 
-export function HeroGame({ game, probability, teamRecords = {} }) {
+export function HeroGame({ game, probability, teamRecords = {}, homeColor: homeColorProp, awayColor: awayColorProp }) {
   const isLive  = game.status === 'in'
   const isFinal = game.status === 'post'
   const isPre   = game.status === 'pre'
@@ -70,8 +77,8 @@ export function HeroGame({ game, probability, teamRecords = {} }) {
   const leader = diff >= 0 ? home.abbreviation : away.abbreviation
   const lead = Math.abs(diff)
 
-  const homeColor = home.color ?? 'var(--panel-3)'
-  const awayColor = away.color ?? 'var(--panel-3)'
+  const homeColor = homeColorProp ?? home.color ?? '#cc0000'
+  const awayColor = awayColorProp ?? away.color ?? '#f5a623'
 
   return (
     <section
@@ -92,8 +99,8 @@ export function HeroGame({ game, probability, teamRecords = {} }) {
         </div>
         <div className="right">
           {isLive && diff !== 0 && <span>{leader} +{lead}</span>}
-          {isFinal && <span>FINAL</span>}
-          {isPre && <span>PREGAME</span>}
+          {game.seriesNote && <span className="hero-series-note">{game.seriesNote}</span>}
+          {game.gameDate && <span>{fmtDate(game.gameDate)}</span>}
         </div>
       </div>
 
@@ -170,14 +177,11 @@ export function HeroGame({ game, probability, teamRecords = {} }) {
         </div>
 
         <div className="pbar">
-          <div className="wp-side home" style={{ flexBasis: flexHome + '%', background: homeColor }} />
-          <div className="wp-divider" />
-          <div className="wp-side away" style={{ flexBasis: flexAway + '%', background: awayColor }} />
+          {flexHome > 0 && <div className="wp-side home" style={{ flexBasis: flexHome + '%', background: homeColor }} />}
+          {flexHome > 0 && flexAway > 0 && <div className="wp-divider" />}
+          {flexAway > 0 && <div className="wp-side away" style={{ flexBasis: flexAway + '%', background: awayColor }} />}
         </div>
 
-        {isPre && (
-          <div className="prob-pregame-note">PRE-TIP ESTIMATE · HOME COURT ADVANTAGE APPLIED</div>
-        )}
       </div>
     </section>
   )
