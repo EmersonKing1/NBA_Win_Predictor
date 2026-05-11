@@ -4,7 +4,6 @@ const API = import.meta.env.VITE_BACKEND_URL ?? ''
 
 import { RecentGameCard } from './components/RecentGameCard.jsx'
 import { HeroGame }       from './components/HeroGame.jsx'
-import { StatsStrip }     from './components/StatsStrip.jsx'
 import { WPChart }        from './components/WPChart.jsx'
 import { GameSwitcher }   from './components/GameSwitcher.jsx'
 import { TEAM_COLORS }    from './teamColors.js'
@@ -219,11 +218,6 @@ export default function App() {
                 probability={activeProb}
                 teamRecords={teamRecords}
               />
-            )}
-
-            {/* Key stats strip */}
-            {activeGame && (
-              <StatsStrip game={activeGame} probability={activeProb} />
             )}
 
             {/* WP Chart + Linescore */}

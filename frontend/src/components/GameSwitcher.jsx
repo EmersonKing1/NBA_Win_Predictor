@@ -29,6 +29,8 @@ export function GameSwitcher({ games, probs, activeId, onPick }) {
     if (ref.current) ref.current.scrollBy({ left: dx, behavior: 'smooth' })
   }
 
+  const hasLive = games.some(g => g.status === 'in')
+
   const sorted = [...games].sort((a, b) => {
     const order = { in: 0, pre: 1, post: 2 }
     return (order[a.status] ?? 3) - (order[b.status] ?? 3)
@@ -38,7 +40,8 @@ export function GameSwitcher({ games, probs, activeId, onPick }) {
     <div>
       <div className="switcher-head">
         <div className="switcher-title">
-          All Games
+          {hasLive && <span className="switcher-live-pill"><span className="live-dot" />LIVE</span>}
+          Upcoming Games
           <span className="switcher-count">{games.length}</span>
         </div>
         <div className="switcher-nav">
@@ -51,11 +54,13 @@ export function GameSwitcher({ games, probs, activeId, onPick }) {
         {sorted.map(game => {
           const home = game.homeTeam
           const away = game.awayTeam
-          const prob = probs[game.id]
+          const prob  = probs[game.id]
           const homeProb = prob?.homeWinProbability ?? 0.5
-          const pctHome = Math.round(homeProb * 100)
-          const pctAway = 100 - pctHome
-          const isFinal = game.status === 'post'
+          const awayProb = prob?.awayWinProbability ?? (1 - homeProb)
+          const pctHome = (homeProb * 100).toFixed(1)
+          const pctAway = (awayProb * 100).toFixed(1)
+          const isFinal  = game.status === 'post'
+          const isLive   = game.status === 'in'
           const homeFinal = isFinal && home.isWinner
           const awayFinal = isFinal && away.isWinner
 
@@ -67,7 +72,10 @@ export function GameSwitcher({ games, probs, activeId, onPick }) {
             >
               {/* Status row */}
               <div className="gc-head">
-                <span className="gc-status">{statusLabel(game)}</span>
+                <span className="gc-status">
+                  {isLive && <span className="gc-live-dot" />}
+                  {statusLabel(game)}
+                </span>
                 <span>{game.id === activeId ? 'FEATURED' : 'VIEW'}</span>
               </div>
 

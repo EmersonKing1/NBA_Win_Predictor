@@ -527,6 +527,28 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
 }
 .wp-label-row .center .live-dot { background: var(--red) !important; }
 
+/* Probability percentage labels — outside the bar */
+.wp-team-label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.wp-team-label.right { flex-direction: row-reverse; }
+.wp-pct-val {
+  font-family: var(--f-display);
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+.wp-team-abbr {
+  font-family: var(--f-mono);
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  opacity: .65;
+}
+
 .pbar {
   position: relative;
   height: 58px;
@@ -785,6 +807,26 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
   box-shadow: 0 0 8px var(--red-glow);
 }
 .switcher-count { color: var(--red); margin-left: 8px; }
+.switcher-live-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--f-mono); font-size: 8px; font-weight: 700;
+  letter-spacing: 1.5px; text-transform: uppercase;
+  color: var(--red);
+  background: rgba(232,0,10,0.10);
+  border: 1px solid rgba(232,0,10,0.25);
+  border-radius: 999px;
+  padding: 3px 8px;
+  margin-right: 10px;
+}
+.switcher-live-pill .live-dot { width: 5px; height: 5px; }
+.gc-live-dot {
+  display: inline-block;
+  width: 5px; height: 5px;
+  border-radius: 50%; background: var(--red);
+  animation: blink 1.4s ease-in-out infinite;
+  margin-right: 4px;
+  flex-shrink: 0;
+}
 .switcher-nav { display: flex; gap: 6px; }
 .nav-btn {
   width: 32px; height: 32px;
@@ -1038,6 +1080,14 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
   color: var(--gold); background: var(--gold-dim);
   border: 1px solid rgba(245,166,35,0.3);
   border-radius: 4px; padding: 2px 6px;
+}
+.series-note {
+  font-family: var(--f-mono);
+  font-size: 8px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--dim);
+  border-left: 1px solid var(--border);
+  padding-left: 6px;
+  margin-left: 2px;
 }
 
 /* Recent card clickable / active states */

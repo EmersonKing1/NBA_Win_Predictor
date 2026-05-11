@@ -39,6 +39,9 @@ export function RecentGameCard({ game, onPick, isActive }) {
         <span className="recent-card-status">
           {isUpset && <span className="upset-badge">Upset</span>}
           Final
+          {game.seriesNote && (
+            <span className="series-note">{game.seriesNote}</span>
+          )}
         </span>
         <span className="recent-card-date">{formatDate(game.gameDate)}</span>
       </div>

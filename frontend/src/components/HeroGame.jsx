@@ -32,11 +32,11 @@ export function HeroGame({ game, probability, teamRecords = {} }) {
   const isPre   = game.status === 'pre'
 
   const homeProb = probability?.homeWinProbability ?? (isPre ? 0.6 : 0.5)
-  const awayProb = 1 - homeProb
-  const pctHome = Math.round(homeProb * 100)
-  const pctAway = 100 - pctHome
+  const awayProb = probability?.awayWinProbability ?? (1 - homeProb)
+  const pctHome = (homeProb * 100).toFixed(1)
+  const pctAway = (awayProb * 100).toFixed(1)
 
-  const flexHome = Math.max(6, Math.min(94, pctHome))
+  const flexHome = Math.max(4, Math.min(96, Math.round(homeProb * 100)))
   const flexAway = 100 - flexHome
 
   const homeScore = game.homeTeam.score
@@ -150,24 +150,24 @@ export function HeroGame({ game, probability, teamRecords = {} }) {
       {/* Win probability bar */}
       <div className="prob-section">
         <div className="wp-label-row">
-          <span>{home.abbreviation} WIN PROBABILITY</span>
+          <span className="wp-team-label" style={{ color: homeColor }}>
+            <span className="wp-pct-val">{pctHome}%</span>
+            <span className="wp-team-abbr">{home.abbreviation}</span>
+          </span>
           <span className="center">
             <span className="live-dot" />
             {isLive ? 'UPDATING IN REAL-TIME' : isFinal ? 'FINAL RESULT' : 'PRE-GAME ESTIMATE'}
           </span>
-          <span>{away.abbreviation} WIN PROBABILITY</span>
+          <span className="wp-team-label right" style={{ color: awayColor }}>
+            <span className="wp-team-abbr">{away.abbreviation}</span>
+            <span className="wp-pct-val">{pctAway}%</span>
+          </span>
         </div>
 
         <div className="pbar">
-          <div className="wp-side home" style={{ flexBasis: flexHome + '%', background: homeColor }}>
-            <span className="wp-pct">{pctHome}%</span>
-            <span className="wp-abbr">{home.abbreviation}</span>
-          </div>
+          <div className="wp-side home" style={{ flexBasis: flexHome + '%', background: homeColor }} />
           <div className="wp-divider" />
-          <div className="wp-side away" style={{ flexBasis: flexAway + '%', background: awayColor }}>
-            <span className="wp-abbr">{away.abbreviation}</span>
-            <span className="wp-pct">{pctAway}%</span>
-          </div>
+          <div className="wp-side away" style={{ flexBasis: flexAway + '%', background: awayColor }} />
         </div>
 
         {isPre && (

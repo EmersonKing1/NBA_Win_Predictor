@@ -70,6 +70,14 @@ def _norm(abbr: str) -> str:
     return _ESPN_TO_NBA.get(abbr, abbr)
 
 
+def _clean(s: str) -> str:
+    """Fix ESPN's double-encoded UTF-8 (e.g. 'Â·' → '·')."""
+    try:
+        return s.encode("latin-1").decode("utf-8")
+    except (UnicodeDecodeError, UnicodeEncodeError):
+        return s
+
+
 def refresh_team_stats(season: str = "2024-25"):
     """Pull advanced stats from NBA API and populate _stats cache."""
     global _stats, _stats_ts
@@ -283,15 +291,33 @@ def _parse_event(ev: dict, rest: dict) -> dict | None:
         venues    = ev.get("venues", [])
         venue_str = venues[0].get("fullName", "") if venues else ""
 
+        # Game date — ISO datetime trimmed to YYYY-MM-DD
+        raw_date  = ev.get("date", "")
+        game_date = raw_date[:10] if raw_date else ""
+
+        # Playoff series note — "Game 5 · BOS leads 3-2"
+        series_note = ""
+        notes = comp.get("notes", [])
+        for note in notes:
+            headline = _clean(note.get("headline", ""))
+            if headline:
+                series_note = headline
+                break
+        series_summary = _clean(comp.get("series", {}).get("summary", ""))
+        if series_summary:
+            series_note = f"{series_note} · {series_summary}" if series_note else series_summary
+
         return {
-            "id":         ev.get("id", ""),
-            "status":     state,
-            "statusText": status_text,
-            "period":     period,
-            "clock":      clock,
-            "venue":      venue_str,
-            "homeTeam":   home,
-            "awayTeam":   away,
+            "id":          ev.get("id", ""),
+            "status":      state,
+            "statusText":  status_text,
+            "period":      period,
+            "clock":       clock,
+            "venue":       venue_str,
+            "gameDate":    game_date,
+            "seriesNote":  series_note,
+            "homeTeam":    home,
+            "awayTeam":    away,
             # internal fields stripped before response
             "_h_rest": rest.get(home["abbreviation"], 2),
             "_a_rest": rest.get(away["abbreviation"], 2),
