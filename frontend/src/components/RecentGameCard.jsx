@@ -5,11 +5,10 @@ function formatDate(dateStr) {
   return `${months[parseInt(m, 10) - 1]} ${parseInt(d, 10)}`
 }
 
-export function RecentGameCard({ game }) {
+export function RecentGameCard({ game, onPick, isActive }) {
   const homeWon = game.homeTeam.isWinner
   const awayWon = game.awayTeam.isWinner
 
-  // homePct = percentage the home team had going in (from our formula)
   const homePct = Math.round((game.homeWinProbability ?? (homeWon ? 1 : 0)) * 100)
   const awayPct = Math.round((game.awayWinProbability ?? (awayWon ? 1 : 0)) * 100)
 
@@ -32,20 +31,27 @@ export function RecentGameCard({ game }) {
   }
 
   return (
-    <div className="recent-card">
+    <div
+      className={`recent-card${isActive ? ' recent-card-active' : ''}${onPick ? ' recent-card-clickable' : ''}`}
+      onClick={onPick ? () => onPick(game.id) : undefined}
+    >
       <div className="recent-card-top">
         <span className="recent-card-status">
-          {isUpset && <span className="upset-badge" style={{ marginRight: 5 }}>Upset</span>}
+          {isUpset && <span className="upset-badge">Upset</span>}
           Final
         </span>
         <span className="recent-card-date">{formatDate(game.gameDate)}</span>
       </div>
 
-      <TeamRow team={game.homeTeam} won={homeWon} />
-      <TeamRow team={game.awayTeam} won={awayWon} />
+      <div className="recent-card-body">
+        <TeamRow team={game.homeTeam} won={homeWon} />
+        <TeamRow team={game.awayTeam} won={awayWon} />
+        <div className="recent-pbar" style={{ '--left': homePct }} />
+      </div>
 
-      {/* mini hatched prob bar — homePct on left */}
-      <div className="recent-pbar" style={{ '--left': homePct }} />
+      {isActive && (
+        <div className="recent-card-featured">FEATURED</div>
+      )}
     </div>
   )
 }

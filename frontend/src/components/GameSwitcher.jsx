@@ -42,8 +42,8 @@ export function GameSwitcher({ games, probs, activeId, onPick }) {
           <span className="switcher-count">{games.length}</span>
         </div>
         <div className="switcher-nav">
-          <button className="nav-btn" onClick={() => scroll(-320)}>‹</button>
-          <button className="nav-btn" onClick={() => scroll(320)}>›</button>
+          <button className="nav-btn" onClick={() => scroll(-280)}>‹</button>
+          <button className="nav-btn" onClick={() => scroll(280)}>›</button>
         </div>
       </div>
 
@@ -55,7 +55,6 @@ export function GameSwitcher({ games, probs, activeId, onPick }) {
           const homeProb = prob?.homeWinProbability ?? 0.5
           const pctHome = Math.round(homeProb * 100)
           const pctAway = 100 - pctHome
-          const homeLeads = game.homeTeam.score >= game.awayTeam.score
           const isFinal = game.status === 'post'
           const homeFinal = isFinal && home.isWinner
           const awayFinal = isFinal && away.isWinner
@@ -66,31 +65,37 @@ export function GameSwitcher({ games, probs, activeId, onPick }) {
               className={`game-card${game.id === activeId ? ' active' : ''}`}
               onClick={() => onPick(game.id)}
             >
+              {/* Status row */}
               <div className="gc-head">
                 <span className="gc-status">{statusLabel(game)}</span>
-                <span>{game.id === activeId ? 'FEATURED' : 'CLICK TO FEATURE'}</span>
+                <span>{game.id === activeId ? 'FEATURED' : 'VIEW'}</span>
               </div>
 
-              <div className={`gc-row${isFinal && !homeFinal ? ' dim' : ''}`}>
-                <TeamLogo logo={home.logo} abbr={home.abbreviation} color={home.color} />
-                <span className="gc-team">{home.abbreviation}</span>
-                <span className="gc-score">{game.status === 'pre' ? '—' : home.score}</span>
+              {/* Score rows */}
+              <div className="gc-body">
+                <div className={`gc-row${isFinal && !homeFinal ? ' dim' : ''}`}>
+                  <TeamLogo logo={home.logo} abbr={home.abbreviation} color={home.color} />
+                  <span className="gc-team">{home.abbreviation}</span>
+                  <span className="gc-score">{game.status === 'pre' ? '—' : home.score}</span>
+                </div>
+
+                <div className={`gc-row${isFinal && !awayFinal ? ' dim' : ''}`}>
+                  <TeamLogo logo={away.logo} abbr={away.abbreviation} color={away.color} />
+                  <span className="gc-team">{away.abbreviation}</span>
+                  <span className="gc-score">{game.status === 'pre' ? '—' : away.score}</span>
+                </div>
               </div>
 
-              <div className={`gc-row${isFinal && !awayFinal ? ' dim' : ''}`}>
-                <TeamLogo logo={away.logo} abbr={away.abbreviation} color={away.color} />
-                <span className="gc-team">{away.abbreviation}</span>
-                <span className="gc-score">{game.status === 'pre' ? '—' : away.score}</span>
-              </div>
-
-              <div className="gc-bar">
-                <div className="gc-bar-fill" style={{ width: pctHome + '%', background: home.color ?? 'var(--accent)' }} />
-                <div className="gc-bar-fill" style={{ width: pctAway + '%', background: away.color ?? 'var(--muted)' }} />
-              </div>
-
-              <div className="gc-probs">
-                <span style={{ color: home.color ?? 'var(--accent)', fontWeight: 700 }}>{pctHome}%</span>
-                <span style={{ color: away.color ?? 'var(--muted)', fontWeight: 700 }}>{pctAway}%</span>
+              {/* Probability bar */}
+              <div className="gc-prob-section">
+                <div className="gc-bar">
+                  <div className="gc-bar-fill" style={{ width: pctHome + '%', background: home.color ?? 'var(--red)' }} />
+                  <div className="gc-bar-fill" style={{ width: pctAway + '%', background: away.color ?? 'var(--muted)' }} />
+                </div>
+                <div className="gc-probs">
+                  <span style={{ color: home.color ?? 'var(--red)' }}>{pctHome}%</span>
+                  <span style={{ color: away.color ?? 'var(--muted)' }}>{pctAway}%</span>
+                </div>
               </div>
             </button>
           )

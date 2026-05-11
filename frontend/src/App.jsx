@@ -7,6 +7,8 @@ import { HeroGame } from './components/HeroGame.jsx'
 import { StatsStrip } from './components/StatsStrip.jsx'
 import { WPChart } from './components/WPChart.jsx'
 import { GameSwitcher } from './components/GameSwitcher.jsx'
+import { StandingsView } from './components/StandingsView.jsx'
+import { StatsView } from './components/StatsView.jsx'
 import { TEAM_COLORS } from './teamColors.js'
 
 function enrichGame(game) {
@@ -21,24 +23,67 @@ function enrichGame(game) {
   }
 }
 
+// Fetch win-probability history + current WP from ESPN game summary
+async function fetchEspnSummary(gameId) {
+  try {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${gameId}`
+    const data = await fetch(url).then(r => r.json())
+
+    // Win probability history — field is lowercase "winprobability", values are 0–1 decimals
+    const wpArray = data.winprobability ?? []
+    const history = wpArray.map(p => ({
+      homeWP: p.homeWinPercentage ?? 0.5,
+    }))
+
+    // Current probability (last entry)
+    let currentHomeWP = null
+    let currentAwayWP = null
+    if (wpArray.length > 0) {
+      const last = wpArray[wpArray.length - 1]
+      currentHomeWP = last.homeWinPercentage ?? 0.5
+      currentAwayWP = 1 - currentHomeWP
+    }
+
+    // Team records from the summary header
+    const competitors = data.header?.competitions?.[0]?.competitors ?? []
+    const records = {}
+    for (const c of competitors) {
+      const rec = c.records?.[0]?.summary ?? null
+      if (c.team?.id) records[c.team.id] = rec
+    }
+
+    return { history, currentHomeWP, currentAwayWP, records }
+  } catch (_) {
+    return null
+  }
+}
+
 const POLL_INTERVAL = 7000
 const RECENT_POLL_INTERVAL = 60000
+
+const TABS = ['Scoreboard', 'Standings', 'Stats']
+const TAB_IDS = ['scoreboard', 'standings', 'stats']
 
 export default function App() {
   const [games, setGames]         = useState([])
   const [probs, setProbs]         = useState({})
   const [recentGames, setRecent]  = useState([])
-  const [lastUpdated, setUpdated] = useState(null)
   const [error, setError]         = useState(null)
   const [loading, setLoading]     = useState(true)
   const [clockStr, setClock]      = useState('—')
   const [activeId, setActiveId]   = useState(null)
+  const [activeTab, setActiveTab] = useState('scoreboard')
 
-  // WP history per game for chart
+  // Live WP chart history (polling)
   const [wpHistory, setWpHistory] = useState({})
-  const prevProbs = useRef({})
 
-  // live clock tick
+  // ESPN summary data (fetched on demand)
+  const [summaryHistory, setSummaryHistory]   = useState({}) // gameId -> [{homeWP}]
+  const [summaryProbs, setSummaryProbs]       = useState({}) // gameId -> {homeWP, awayWP}
+  const [teamRecords, setTeamRecords]         = useState({}) // teamId -> "W-L"
+  const summaryFetched = useRef(new Set())
+
+  // live clock
   useEffect(() => {
     const tick = () => {
       const d = new Date()
@@ -68,12 +113,13 @@ export default function App() {
           results.forEach((r, i) => {
             if (r.status === 'fulfilled') map[gs[i].id] = r.value
           })
-          setProbs(map)
+          setProbs(prev => ({ ...prev, ...map }))
 
-          // Append to WP history
+          // Build WP history for live/in-progress games
           setWpHistory(prev => {
             const next = { ...prev }
             for (const g of gs) {
+              if (g.status !== 'in') continue
               const wp = map[g.id]?.homeWinProbability ?? 0.5
               const arr = (next[g.id] ?? []).slice(-200)
               arr.push({ homeWP: wp })
@@ -82,14 +128,12 @@ export default function App() {
             return next
           })
 
-          // Default active to first live game, then first game
           setActiveId(prev => {
-            if (prev && gs.find(g => g.id === prev)) return prev
+            if (prev) return prev   // never override a user's explicit selection
             const live = gs.find(g => g.status === 'in')
             return live ? live.id : gs[0]?.id ?? null
           })
         }
-        setUpdated(new Date())
       } catch (err) {
         setError(err.message)
       } finally {
@@ -100,7 +144,17 @@ export default function App() {
     const fetchRecent = async () => {
       try {
         const data = await fetch(`${API}/recent-games`).then(r => r.json())
-        setRecent((data.games ?? []).map(enrichGame))
+        const gs = (data.games ?? []).map(enrichGame)
+        setRecent(gs)
+        // Populate probs for completed games from embedded data
+        const recentProbs = {}
+        for (const g of gs) {
+          recentProbs[g.id] = {
+            homeWinProbability: g.homeTeam.isWinner ? 1 : 0,
+            awayWinProbability: g.awayTeam.isWinner ? 1 : 0,
+          }
+        }
+        setProbs(prev => ({ ...prev, ...recentProbs }))
       } catch (_) {}
     }
 
@@ -111,150 +165,231 @@ export default function App() {
     return () => { clearInterval(liveId); clearInterval(recentId) }
   }, [])
 
-  const liveCount = games.filter(g => g.status === 'in').length
-  const activeGame = games.find(g => g.id === activeId) ?? games[0] ?? null
-  const activeProb = activeGame ? probs[activeGame.id] : null
-  const activeHistory = (activeGame ? wpHistory[activeGame.id] : null) ?? []
+  // Fetch ESPN summary whenever active game changes — gets real WP history + records
+  useEffect(() => {
+    if (!activeId) return
+    if (summaryFetched.current.has(activeId)) return
+    summaryFetched.current.add(activeId)
+
+    fetchEspnSummary(activeId).then(result => {
+      if (!result) return
+      const { history, currentHomeWP, currentAwayWP, records } = result
+
+      if (history.length > 2) {
+        setSummaryHistory(prev => ({ ...prev, [activeId]: history }))
+      }
+      if (currentHomeWP !== null) {
+        setSummaryProbs(prev => ({
+          ...prev,
+          [activeId]: { homeWinProbability: currentHomeWP, awayWinProbability: currentAwayWP }
+        }))
+      }
+      if (Object.keys(records).length > 0) {
+        setTeamRecords(prev => ({ ...prev, ...records }))
+      }
+    })
+  }, [activeId])
+
+  // Unified game pool: today's games + recent (no duplicates)
+  const allGames = [
+    ...games,
+    ...recentGames.filter(r => !games.find(g => g.id === r.id)),
+  ]
+
+  const liveCount   = games.filter(g => g.status === 'in').length
+  const activeGame  = allGames.find(g => g.id === activeId) ?? allGames[0] ?? null
+
+  // Use ESPN summary prob if available, else backend prob, else null
+  const activeProb = summaryProbs[activeGame?.id]
+    ?? (activeGame ? probs[activeGame.id] : null)
+
+  // Chart history: ESPN summary (full history) takes priority over live polling
+  const chartHistory = summaryHistory[activeGame?.id]
+    ?? wpHistory[activeGame?.id]
+    ?? []
+
+  const handlePick = (id) => {
+    setActiveId(id)
+    if (activeTab !== 'scoreboard') setActiveTab('scoreboard')
+  }
 
   return (
     <div className="app">
 
-      {/* ── Top bar ── */}
+      {/* ── Masthead ── */}
       <header className="masthead">
         <div className="brandmark">
           <div className="brand-mark">T</div>
-          <div>
-            <div className="site-title">TIPOFF <span className="site-title-accent">LIVE</span></div>
-          </div>
-          <span className="site-subtitle">WIN PROBABILITY ENGINE</span>
+          <div className="site-title">Tipoff <span className="site-title-accent">Live</span></div>
         </div>
 
         <div className="masthead-center">
-          {liveCount > 0 && (
-            <span className="pulse-pill">LIVE</span>
-          )}
+          <nav className="masthead-nav-links">
+            {TAB_IDS.map((id, i) => (
+              <span
+                key={id}
+                className={`nav-link${activeTab === id ? ' active' : ''}`}
+                onClick={() => setActiveTab(id)}
+              >
+                {TABS[i]}
+              </span>
+            ))}
+          </nav>
         </div>
 
         <div className="masthead-meta">
+          {liveCount > 0 && <span className="pulse-pill">LIVE</span>}
           <span>{liveCount > 0 ? `${liveCount} GAMES` : 'NO LIVE GAMES'}</span>
-          <span style={{ opacity: .4 }}>·</span>
           <span className="masthead-clock">{clockStr} ET</span>
         </div>
       </header>
 
-      {error ? (
-        <div className="error-state">
-          <div>BACKEND OFFLINE</div>
-          <div className="sub">Run <code>build\Release\nbapred_server.exe</code> then refresh.</div>
-        </div>
-      ) : loading ? (
-        <div className="game-list">
-          <div className="skeleton skeleton-card" />
-          <div className="skeleton skeleton-card" style={{ height: 80, marginTop: 8 }} />
-        </div>
-      ) : games.length === 0 ? (
-        <div className="empty-state">
-          <h2>NO GAMES TODAY</h2>
-          <p>Check back during the NBA season for live win probabilities.</p>
-        </div>
-      ) : (
-        <>
-          {/* ── Hero ── */}
-          {activeGame && (
-            <HeroGame game={activeGame} probability={activeProb} />
-          )}
+      {/* ── Page content ── */}
+      <div className="page-content">
 
-          {/* ── Stats strip ── */}
-          {activeGame && (
-            <StatsStrip game={activeGame} probability={activeProb} />
-          )}
+        {/* ── STANDINGS TAB ── */}
+        {activeTab === 'standings' && <StandingsView />}
 
-          {/* ── WP Chart + Linescore ── */}
-          {activeGame && activeHistory.length > 2 && (
-            <div className="chart-row">
-              <div className="panel-card">
-                <div className="panel-card-head">
-                  <div className="panel-card-title">Win Probability · Live</div>
-                  <div className="panel-card-sub">
-                    {activeGame.homeTeam.abbreviation} vs {activeGame.awayTeam.abbreviation}
-                  </div>
-                </div>
-                <WPChart
-                  history={activeHistory}
-                  homeColor={activeGame.homeTeam.color ?? '#3b82f6'}
-                  awayColor={activeGame.awayTeam.color ?? '#f97316'}
-                  homeAbbr={activeGame.homeTeam.abbreviation}
-                  awayAbbr={activeGame.awayTeam.abbreviation}
-                />
-                <div className="chart-legend">
-                  <span>
-                    <span className="chart-swatch" style={{ background: activeGame.homeTeam.color ?? '#3b82f6' }} />
-                    {activeGame.homeTeam.abbreviation}
-                  </span>
-                  <span>
-                    <span className="chart-swatch" style={{ background: activeGame.awayTeam.color ?? '#f97316' }} />
-                    {activeGame.awayTeam.abbreviation}
-                  </span>
-                  <span style={{ marginLeft: 'auto' }}>HOVER TO SCRUB · {activeHistory.length} FRAMES</span>
-                </div>
+        {/* ── STATS TAB ── */}
+        {activeTab === 'stats' && <StatsView />}
+
+        {/* ── SCOREBOARD TAB ── */}
+        {activeTab === 'scoreboard' && (
+          <>
+            {error ? (
+              <div className="error-state">
+                <div>BACKEND OFFLINE</div>
+                <div className="sub">Run <code>build\Release\nbapred_server.exe</code> then refresh.</div>
               </div>
+            ) : loading ? (
+              <div>
+                <div className="skeleton skeleton-card" />
+                <div className="skeleton skeleton-card" style={{ height: 80, marginTop: 8 }} />
+              </div>
+            ) : allGames.length === 0 ? (
+              <div className="empty-state">
+                <h2>NO GAMES TODAY</h2>
+                <p>Check back during the NBA season for live win probabilities.</p>
+              </div>
+            ) : (
+              <>
+                {activeGame && (
+                  <HeroGame
+                    game={activeGame}
+                    probability={activeProb}
+                    teamRecords={teamRecords}
+                  />
+                )}
 
-              {/* Linescore panel */}
-              {activeGame.homeTeam.linescores?.length > 0 && (
-                <div className="panel-card">
-                  <div className="panel-card-head">
-                    <div className="panel-card-title">Linescore</div>
-                    <div className="panel-card-sub">{activeGame.statusText}</div>
-                  </div>
-                  <div className="linescore-wrap">
-                    <div className="ls-col">
-                      <span className="ls-label"> </span>
-                      <span className="ls-val" style={{ fontSize: 10, color: 'var(--muted)' }}>{activeGame.homeTeam.abbreviation}</span>
-                      <span className="ls-val" style={{ fontSize: 10, color: 'var(--muted)' }}>{activeGame.awayTeam.abbreviation}</span>
-                    </div>
-                    {activeGame.homeTeam.linescores.map((pts, i) => (
-                      <div key={i} className="ls-col">
-                        <span className="ls-label">
-                          {i < 4 ? `Q${i+1}` : i === 4 ? 'OT' : `OT${i-3}`}
-                        </span>
-                        <span className="ls-val">{pts}</span>
-                        <span className="ls-val">{activeGame.awayTeam.linescores?.[i] ?? 0}</span>
+                {activeGame && (
+                  <StatsStrip game={activeGame} probability={activeProb} />
+                )}
+
+                {/* ── WP Chart ── */}
+                {activeGame && chartHistory.length > 2 && (
+                  <div className="chart-row">
+                    <div className="panel-card">
+                      <div className="panel-card-head">
+                        <div className="panel-card-title">Win Probability · {activeGame.status === 'in' ? 'Live' : activeGame.status === 'post' ? 'Final' : 'Pre-Game'}</div>
+                        <div className="panel-card-sub">
+                          {activeGame.homeTeam.abbreviation} vs {activeGame.awayTeam.abbreviation}
+                          {activeGame.status === 'post' && ' · Full Game'}
+                        </div>
                       </div>
-                    ))}
+                      <WPChart
+                        history={chartHistory}
+                        homeColor={activeGame.homeTeam.color ?? '#cc0000'}
+                        awayColor={activeGame.awayTeam.color ?? '#f5a623'}
+                        homeAbbr={activeGame.homeTeam.abbreviation}
+                        awayAbbr={activeGame.awayTeam.abbreviation}
+                      />
+                      <div className="chart-legend">
+                        <span>
+                          <span className="chart-swatch" style={{ background: activeGame.homeTeam.color ?? '#cc0000' }} />
+                          {activeGame.homeTeam.abbreviation} (Home)
+                        </span>
+                        <span>
+                          <span className="chart-swatch" style={{ background: activeGame.awayTeam.color ?? '#f5a623' }} />
+                          {activeGame.awayTeam.abbreviation} (Away)
+                        </span>
+                        <span style={{ marginLeft: 'auto' }}>
+                          {activeGame.status === 'in'
+                            ? `HOVER TO SCRUB · ${chartHistory.length} FRAMES`
+                            : `${chartHistory.length} PLAYS`
+                          }
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Linescore */}
+                    {activeGame.homeTeam.linescores?.length > 0 && (
+                      <div className="panel-card">
+                        <div className="panel-card-head">
+                          <div className="panel-card-title">Linescore</div>
+                          <div className="panel-card-sub">{activeGame.statusText}</div>
+                        </div>
+                        <div className="linescore-wrap">
+                          <div className="ls-col">
+                            <span className="ls-label"> </span>
+                            <span className="ls-val" style={{ fontSize: 10, color: 'var(--muted)' }}>{activeGame.homeTeam.abbreviation}</span>
+                            <span className="ls-val" style={{ fontSize: 10, color: 'var(--muted)' }}>{activeGame.awayTeam.abbreviation}</span>
+                          </div>
+                          {activeGame.homeTeam.linescores.map((pts, i) => (
+                            <div key={i} className="ls-col">
+                              <span className="ls-label">
+                                {i < 4 ? `Q${i+1}` : i === 4 ? 'OT' : `OT${i-3}`}
+                              </span>
+                              <span className="ls-val">{pts}</span>
+                              <span className="ls-val">{activeGame.awayTeam.linescores?.[i] ?? 0}</span>
+                            </div>
+                          ))}
+                          <div className="ls-col" style={{ marginLeft: 8, borderLeft: '1px solid var(--border)', paddingLeft: 8 }}>
+                            <span className="ls-label">TOT</span>
+                            <span className="ls-val" style={{ color: activeGame.homeTeam.isWinner ? 'var(--text)' : 'var(--muted)', fontWeight: 900 }}>{activeGame.homeTeam.score}</span>
+                            <span className="ls-val" style={{ color: activeGame.awayTeam.isWinner ? 'var(--text)' : 'var(--muted)', fontWeight: 900 }}>{activeGame.awayTeam.score}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
+                )}
+
+                {/* ── Game switcher ── */}
+                <GameSwitcher
+                  games={games}
+                  probs={probs}
+                  activeId={activeId}
+                  onPick={handlePick}
+                />
+
+                {/* ── Recent results ── */}
+                {recentGames.length > 0 && (
+                  <div className="recent-section">
+                    <div className="section-header">
+                      <span className="section-label">Recent Results</span>
+                    </div>
+                    <div className="recent-grid">
+                      {recentGames.map(game => (
+                        <RecentGameCard
+                          key={game.id}
+                          game={game}
+                          onPick={handlePick}
+                          isActive={game.id === activeId}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="footer-note">
+                  <span>Win % powered by ESPN · {activeGame?.status === 'in' ? 'Live' : 'Historical'} data</span>
+                  <span className="footer-arrow">↻ LIVE EVERY 7S</span>
                 </div>
-              )}
-            </div>
-          )}
-
-          {/* ── Game switcher ── */}
-          <GameSwitcher
-            games={games}
-            probs={probs}
-            activeId={activeId}
-            onPick={setActiveId}
-          />
-
-          {/* ── Recent results ── */}
-          {recentGames.length > 0 && (
-            <div className="recent-section">
-              <div className="section-header">
-                <span className="section-label">Recent Results</span>
-              </div>
-              <div className="recent-grid">
-                {recentGames.map(game => (
-                  <RecentGameCard key={game.id} game={game} />
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="footer-note">
-            <span>Win % = score diff · time remaining · home court edge</span>
-            <span className="footer-arrow">↻ LIVE EVERY 7S</span>
-          </div>
-        </>
-      )}
+              </>
+            )}
+          </>
+        )}
+      </div>
     </div>
   )
 }

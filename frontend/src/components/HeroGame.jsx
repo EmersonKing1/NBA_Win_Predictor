@@ -26,7 +26,7 @@ function qLabel(period) {
   return `Q${period}`
 }
 
-export function HeroGame({ game, probability }) {
+export function HeroGame({ game, probability, teamRecords = {} }) {
   const isLive  = game.status === 'in'
   const isFinal = game.status === 'post'
   const isPre   = game.status === 'pre'
@@ -78,6 +78,7 @@ export function HeroGame({ game, probability }) {
         '--away-glow': awayColor,
       }}
     >
+      {/* Top banner */}
       <div className="hero-head">
         <div className="left">
           <span className="ticker">
@@ -93,26 +94,31 @@ export function HeroGame({ game, probability }) {
         </div>
       </div>
 
+      {/* Matchup: vertical columns */}
       <div className="matchup">
-        {/* Home */}
+
+        {/* Home — left column */}
         <div className="team-side home">
           <TeamLogo logo={home.logo} abbr={home.abbreviation} color={homeColor} dim={isFinal && !homeFinal} />
           <div className="team-meta">
-            <div className="team-city">{home.name?.split(' ').slice(0, -1).join(' ').toUpperCase()}</div>
-            <div className="team-name">{home.name?.split(' ').slice(-1)[0]?.toUpperCase() ?? home.abbreviation}</div>
-            <div className="team-record">HOME</div>
+            <div className="team-city">{home.name?.split(' ').slice(0, -1).join(' ') ?? ''}</div>
+            <div className="team-name">{home.name?.split(' ').slice(-1)[0] ?? home.abbreviation}</div>
+            <div className="team-record">{teamRecords[home.id] ?? 'HOME'}</div>
           </div>
-          <div className={`hero-score${bumpHome ? ' bump' : ''}`} style={isFinal && !homeFinal ? { opacity: 0.35 } : {}}>
+          <div
+            className={`hero-score${bumpHome ? ' bump' : ''}`}
+            style={isFinal && !homeFinal ? { opacity: 0.28 } : {}}
+          >
             {isPre ? '—' : homeScore}
           </div>
         </div>
 
-        {/* Clock */}
+        {/* Center clock */}
         <div className="clock-block">
           {isPre ? (
             <>
-              <div className="clock-quarter" style={{ fontSize: 18, color: 'var(--muted)' }}>TIP</div>
-              <div className="clock-time" style={{ fontSize: 16 }}>{game.statusText}</div>
+              <div className="clock-quarter">TIP</div>
+              <div className="clock-time" style={{ fontSize: 18 }}>{game.statusText}</div>
               <div className="clock-tag">Pregame</div>
             </>
           ) : (
@@ -124,57 +130,45 @@ export function HeroGame({ game, probability }) {
           )}
         </div>
 
-        {/* Away */}
+        {/* Away — right column */}
         <div className="team-side away">
           <TeamLogo logo={away.logo} abbr={away.abbreviation} color={awayColor} dim={isFinal && !awayFinal} />
           <div className="team-meta">
-            <div className="team-city">{away.name?.split(' ').slice(0, -1).join(' ').toUpperCase()}</div>
-            <div className="team-name">{away.name?.split(' ').slice(-1)[0]?.toUpperCase() ?? away.abbreviation}</div>
-            <div className="team-record">AWAY</div>
+            <div className="team-city">{away.name?.split(' ').slice(0, -1).join(' ') ?? ''}</div>
+            <div className="team-name">{away.name?.split(' ').slice(-1)[0] ?? away.abbreviation}</div>
+            <div className="team-record">{teamRecords[away.id] ?? 'AWAY'}</div>
           </div>
-          <div className={`hero-score${bumpAway ? ' bump' : ''}`} style={isFinal && !awayFinal ? { opacity: 0.35 } : {}}>
+          <div
+            className={`hero-score${bumpAway ? ' bump' : ''}`}
+            style={isFinal && !awayFinal ? { opacity: 0.28 } : {}}
+          >
             {isPre ? '—' : awayScore}
           </div>
         </div>
       </div>
 
-      {/* WP bar */}
+      {/* Win probability bar */}
       <div className="prob-section">
         <div className="wp-label-row">
           <span>{home.abbreviation} WIN PROBABILITY</span>
           <span className="center">
-            <span className="live-dot" style={{ background: 'var(--accent)' }} />
+            <span className="live-dot" />
             {isLive ? 'UPDATING IN REAL-TIME' : isFinal ? 'FINAL RESULT' : 'PRE-GAME ESTIMATE'}
           </span>
           <span>{away.abbreviation} WIN PROBABILITY</span>
         </div>
 
-        {isPre ? (
-          /* Simple bar for pregame */
-          <div style={{ position: 'relative', height: 56, borderRadius: 10, overflow: 'hidden', display: 'flex', background: 'var(--panel-3)', border: '1px solid var(--border)' }}>
-            <div className="wp-side home" style={{ flexBasis: flexHome + '%', background: homeColor }}>
-              <span className="wp-pct">{pctHome}%</span>
-              <span className="wp-abbr">{home.abbreviation}</span>
-            </div>
-            <div className="wp-divider" />
-            <div className="wp-side away" style={{ flexBasis: flexAway + '%', background: awayColor }}>
-              <span className="wp-abbr">{away.abbreviation}</span>
-              <span className="wp-pct">{pctAway}%</span>
-            </div>
+        <div className="pbar">
+          <div className="wp-side home" style={{ flexBasis: flexHome + '%', background: homeColor }}>
+            <span className="wp-pct">{pctHome}%</span>
+            <span className="wp-abbr">{home.abbreviation}</span>
           </div>
-        ) : (
-          <div className="pbar">
-            <div className="wp-side home" style={{ flexBasis: flexHome + '%', background: homeColor }}>
-              <span className="wp-pct">{pctHome}%</span>
-              <span className="wp-abbr">{home.abbreviation}</span>
-            </div>
-            <div className="wp-divider" />
-            <div className="wp-side away" style={{ flexBasis: flexAway + '%', background: awayColor }}>
-              <span className="wp-abbr">{away.abbreviation}</span>
-              <span className="wp-pct">{pctAway}%</span>
-            </div>
+          <div className="wp-divider" />
+          <div className="wp-side away" style={{ flexBasis: flexAway + '%', background: awayColor }}>
+            <span className="wp-abbr">{away.abbreviation}</span>
+            <span className="wp-pct">{pctAway}%</span>
           </div>
-        )}
+        </div>
 
         {isPre && (
           <div className="prob-pregame-note">PRE-TIP ESTIMATE · HOME COURT ADVANTAGE APPLIED</div>
