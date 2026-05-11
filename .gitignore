@@ -1,14 +1,28 @@
-build/
+# Dependencies
 node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Build outputs
 frontend/dist/
-*.exe
-*.dll
-*.obj
-*.pdb
-*.lib
-*.ilk
-vcpkg_installed/
-.vs/
-.claude/
 frontend/.env
 frontend/.env.local
+
+# Python data pipeline — regenerate with collect_data.py && train.py
+backend_py/data/training_data.csv
+backend_py/data/plots/
+
+# model.pkl is intentionally tracked (needed for Railway deployment)
+# To rebuild: cd backend_py && python collect_data.py && python train.py
+
+# IDE / OS
+.vs/
+.vscode/settings.json
+.DS_Store
+Thumbs.db
+
+# Claude memory (local only)
+.claude/
