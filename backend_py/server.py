@@ -27,7 +27,7 @@ import joblib
 import numpy as np
 import requests
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -63,6 +63,26 @@ _rest_ts: float = 0.0
 
 # ── Per-game probability cache (stale fallback on ESPN errors) ──────────
 _prob_cache: dict = {}  # game_id → {homeWinProbability, awayWinProbability}
+
+# ── Per-game WP history (own model snapshots, survives frontend reloads) ──
+_wp_history: dict = {}  # game_id → [{homeWP, elapsed}, ...]
+
+
+def _game_elapsed(period: int, clock: str) -> float:
+    """Convert period + remaining clock ('M:SS') to elapsed minutes."""
+    if not period or period < 1:
+        return 0.0
+    rem_sec = 0.0
+    if clock:
+        parts = clock.split(":")
+        if len(parts) == 2:
+            try:
+                rem_sec = int(parts[0]) * 60 + int(parts[1])
+            except ValueError:
+                pass
+    q_len    = 720 if period <= 4 else 300
+    base_min = (period - 1) * 12 if period <= 4 else 48 + (period - 5) * 5
+    return base_min + (q_len - rem_sec) / 60
 
 # ESPN uses slightly different abbreviations for some franchises
 _ESPN_TO_NBA: dict = {
@@ -362,9 +382,17 @@ def _parse_event(ev: dict, rest: dict) -> dict | None:
         venues    = ev.get("venues", [])
         venue_str = venues[0].get("fullName", "") if venues else ""
 
-        # Game date — ISO datetime trimmed to YYYY-MM-DD
-        raw_date  = ev.get("date", "")
-        game_date = raw_date[:10] if raw_date else ""
+        # Game date — convert UTC to Eastern Time (EDT = UTC-4 during playoffs)
+        raw_date = ev.get("date", "")
+        if raw_date:
+            try:
+                dt_utc = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+                dt_et  = dt_utc.astimezone(timezone(timedelta(hours=-4)))
+                game_date = dt_et.strftime("%Y-%m-%d")
+            except Exception:
+                game_date = raw_date[:10]
+        else:
+            game_date = ""
 
         # Playoff series note — "Game 5 · BOS leads 3-2"
         series_note = ""
@@ -487,14 +515,30 @@ def get_probability(game_id: str):
                 if g:
                     hp, ap = _compute_prob(g)
                     result = {"homeWinProbability": hp, "awayWinProbability": ap}
-                    _prob_cache[game_id] = result   # update stale fallback
+                    _prob_cache[game_id] = result
+
+                    # Record snapshot for history (only for live games, dedupe by elapsed)
+                    if g.get("status") == "in":
+                        elapsed  = _game_elapsed(g.get("period", 0), g.get("clock", ""))
+                        snapshot = {"homeWP": hp, "elapsed": elapsed}
+                        hist     = _wp_history.setdefault(game_id, [])
+                        if not hist or abs(hist[-1]["elapsed"] - elapsed) >= 0.05:
+                            hist.append(snapshot)
+                            if len(hist) > 2000:
+                                _wp_history[game_id] = hist[-2000:]
+
                     return result
     except Exception as exc:
         print(f"[prob] {game_id}: {exc}")
-    # Return last-known probability on transient errors instead of 50/50
     if game_id in _prob_cache:
         return {**_prob_cache[game_id], "stale": True}
     return {"homeWinProbability": 0.5, "awayWinProbability": 0.5}
+
+
+@app.get("/wp-history/{game_id}")
+def get_wp_history(game_id: str):
+    """Return all model WP snapshots accumulated for a live game."""
+    return {"history": _wp_history.get(game_id, [])}
 
 
 @app.get("/recent-games")

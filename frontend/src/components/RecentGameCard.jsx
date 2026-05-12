@@ -9,27 +9,23 @@ export function RecentGameCard({ game, onPick, isActive }) {
   const homeWon = game.homeTeam.isWinner
   const awayWon = game.awayTeam.isWinner
 
-  const homePct = Math.round((game.homeWinProbability ?? (homeWon ? 1 : 0)) * 100)
-  const awayPct = Math.round((game.awayWinProbability ?? (awayWon ? 1 : 0)) * 100)
-
   const winnerColor = homeWon
-    ? (game.homeTeam.color ?? null)
-    : (game.awayTeam.color ?? null)
+    ? (game.homeTeam.color ?? '#888')
+    : (game.awayTeam.color ?? '#888')
 
-  const winnerPct = homeWon ? homePct : awayPct
-  const isUpset   = winnerPct < 35
+  const isUpset = false // kept for future use
 
   function TeamRow({ team, won }) {
     return (
       <div className={`recent-team-row${won ? ' win' : ''}`}>
         <span className="recent-team-name">
           {team.logo
-            ? <img className="recent-mark-logo" src={team.logo} alt={team.abbreviation} />
+            ? <img className="recent-mark-logo" src={team.logo} alt={team.abbreviation} onError={e => { e.target.style.display = 'none' }} />
             : <span className="recent-mark">{team.abbreviation.slice(0, 2)}</span>
           }
           {team.abbreviation}
         </span>
-        <span className="score">{team.score}</span>
+        <span className={`score${won ? ' score-win' : ''}`}>{team.score}</span>
       </div>
     )
   }
@@ -41,7 +37,6 @@ export function RecentGameCard({ game, onPick, isActive }) {
     >
       <div className="recent-card-top">
         <span className="recent-card-status">
-          {isUpset && <span className="upset-badge">Upset</span>}
           Final
           {game.seriesNote && (
             <span className="series-note">{game.seriesNote}</span>
@@ -53,8 +48,10 @@ export function RecentGameCard({ game, onPick, isActive }) {
       <div className="recent-card-body">
         <TeamRow team={game.homeTeam} won={homeWon} />
         <TeamRow team={game.awayTeam} won={awayWon} />
-        <div className="recent-pbar" style={{ '--left': homePct, '--winner-color': winnerColor ?? 'var(--red)' }} />
       </div>
+
+      {/* Winner accent — solid stripe, always visible, always correct color */}
+      <div className="recent-winner-stripe" style={{ background: winnerColor }} />
 
       {isActive && (
         <div className="recent-card-featured">FEATURED</div>

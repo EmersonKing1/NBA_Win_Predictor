@@ -22,15 +22,22 @@ function fmtDate(dateStr) {
   return `${months[parseInt(m,10)-1]} ${parseInt(d,10)}`
 }
 
-function fmtClock(clockStr) {
-  if (!clockStr || clockStr === '0:00') return '0:00'
-  return clockStr
-}
-
 function qLabel(period) {
   if (!period) return ''
   if (period > 4) return `OT${period - 4 > 1 ? period - 4 : ''}`
   return `Q${period}`
+}
+
+function breakLabel(period, clock) {
+  if (!clock) return null
+  // Match "0:00", "0.0", "00:00" etc.
+  if (!/^0+[:.]0+$/.test(clock.trim())) return null
+  if (period === 1) return 'END Q1'
+  if (period === 2) return 'HALFTIME'
+  if (period === 3) return 'END Q3'
+  if (period === 4) return 'END Q4'
+  if (period >= 5) return period === 5 ? 'END OT' : `END OT${period - 4}`
+  return null
 }
 
 export function HeroGame({ game, probability, teamRecords = {}, homeColor: homeColorProp, awayColor: awayColorProp }) {
@@ -133,13 +140,22 @@ export function HeroGame({ game, probability, teamRecords = {}, homeColor: homeC
               <div className="clock-time" style={{ fontSize: 18 }}>{game.statusText}</div>
               <div className="clock-tag">Pregame</div>
             </>
-          ) : (
-            <>
-              <div className="clock-quarter">{qLabel(game.period)}</div>
-              <div className="clock-time">{fmtClock(game.clock)}</div>
-              <div className="clock-tag">In Play</div>
-            </>
-          )}
+          ) : (() => {
+            const label = breakLabel(game.period, game.clock)
+            return label ? (
+              <>
+                <div className="clock-time clock-break">{label}</div>
+                <span className="live-dot clock-live-dot" />
+              </>
+            ) : (
+              <>
+                <div className="clock-quarter">{qLabel(game.period)}</div>
+                <div className="clock-time">{game.clock}</div>
+                <div className="clock-tag">In Play</div>
+                <span className="live-dot clock-live-dot" />
+              </>
+            )
+          })()}
         </div>
 
         {/* Away — right column */}
@@ -167,8 +183,7 @@ export function HeroGame({ game, probability, teamRecords = {}, homeColor: homeC
             <span className="wp-team-abbr">{home.abbreviation}</span>
           </span>
           <span className="center">
-            <span className="live-dot" />
-            {isLive ? 'UPDATING IN REAL-TIME' : isFinal ? 'FINAL RESULT' : 'PRE-GAME ESTIMATE'}
+            {isFinal ? 'FINAL' : isPre ? 'PRE-GAME' : null}
           </span>
           <span className="wp-team-label right" style={{ color: awayColor }}>
             <span className="wp-team-abbr">{away.abbreviation}</span>

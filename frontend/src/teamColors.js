@@ -29,6 +29,7 @@ export const TEAM_COLORS = {
   PHX: '#1d1160',
   POR: '#e03a3e',
   SAC: '#5a2d81',
+  SA:  '#1d1d1d',
   SAS: '#1d1d1d',
   TOR: '#ce1141',
   UTA: '#002b5c',

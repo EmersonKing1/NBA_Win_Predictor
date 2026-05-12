@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 
 const API = import.meta.env.VITE_BACKEND_URL ?? ''
 
@@ -9,10 +9,25 @@ import { GameSwitcher }   from './components/GameSwitcher.jsx'
 import { TEAM_COLORS }    from './teamColors.js'
 import { distinctAwayColor } from './utils.js'
 
+// Convert period + remaining clock ("M:SS") to elapsed minutes
+function gameElapsed(period, clock) {
+  if (!period || period < 1) return 0
+  let remSec = 0
+  if (clock) {
+    const [m, s] = clock.split(':').map(Number)
+    remSec = (isNaN(m) ? 0 : m * 60) + (isNaN(s) ? 0 : s)
+  }
+  const qLen    = period <= 4 ? 720 : 300  // seconds per quarter / OT
+  const baseMin = period <= 4 ? (period - 1) * 12 : 48 + (period - 5) * 5
+  return baseMin + (qLen - remSec) / 60
+}
+
 function enrichGame(game) {
   const enrichTeam = t => ({
     ...t,
-    color: t.color ?? TEAM_COLORS[t.abbreviation] ?? TEAM_COLORS[t.id] ?? null,
+    // Our curated map takes priority — ESPN's color field often returns an alternate
+    // (e.g. Knicks shows as blue, Pistons as blue) rather than the recognizable logo color.
+    color: TEAM_COLORS[t.abbreviation] ?? TEAM_COLORS[t.id] ?? t.color ?? null,
   })
   return {
     ...game,
@@ -21,29 +36,6 @@ function enrichGame(game) {
   }
 }
 
-// Fetch full WP history from ESPN for the chart (model handles current prob)
-async function fetchEspnHistory(gameId) {
-  try {
-    const url = `https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=${gameId}`
-    const data = await fetch(url).then(r => r.json())
-    const wpArray = data.winprobability ?? []
-    if (wpArray.length < 3) return null
-
-    const history = wpArray.map(p => ({ homeWP: p.homeWinPercentage ?? 0.5 }))
-
-    // Team records from the summary header
-    const competitors = data.header?.competitions?.[0]?.competitors ?? []
-    const records = {}
-    for (const c of competitors) {
-      const rec = c.records?.[0]?.summary ?? null
-      if (c.team?.id) records[c.team.id] = rec
-    }
-
-    return { history, records }
-  } catch (_) {
-    return null
-  }
-}
 
 const POLL_INTERVAL        = 7000
 const RECENT_POLL_INTERVAL = 60000
@@ -56,13 +48,10 @@ export default function App() {
   const [loading, setLoading]      = useState(true)
   const [clockStr, setClock]       = useState('—')
   const [activeId, setActiveId]    = useState(null)
-  const [lastUpdated, setLastUpdated] = useState(null)
 
-  // WP chart data
-  const [wpHistory, setWpHistory]         = useState({})    // live poll history
-  const [espnHistory, setEspnHistory]     = useState({})    // ESPN full-game history
-  const [teamRecords, setTeamRecords]     = useState({})
-  const espnFetched = useRef(new Set())
+  // WP chart data — own model only, seeded from server on load
+  const [wpHistory, setWpHistory]   = useState({})
+  const [teamRecords, setTeamRecords] = useState({})
 
   // Live clock
   useEffect(() => {
@@ -99,20 +88,21 @@ export default function App() {
           })
           setProbs(prev => ({ ...prev, ...map }))
 
-          setLastUpdated(Date.now())
-
-          // Accumulate live WP history for in-progress games; drop finished games
+          // Accumulate WP history using our model (same source as the bar)
           setWpHistory(prev => {
             const next = { ...prev }
             for (const g of gs) {
-              if (g.status === 'post') {
-                delete next[g.id]   // post games use ESPN history; no need to hold polling data
+              const wp = map[g.id]?.homeWinProbability ?? 0.5
+              if (g.status === 'pre') {
+                // Overwrite each poll — keeps the pregame dot accurate, stays 1 point
+                next[g.id] = [{ homeWP: wp, elapsed: 0 }]
               } else if (g.status === 'in') {
-                const wp = map[g.id]?.homeWinProbability ?? 0.5
-                const arr = (next[g.id] ?? []).slice(-200)
-                arr.push({ homeWP: wp })
+                const elapsed = gameElapsed(g.period, g.clock)
+                const arr = (next[g.id] ?? []).slice(-400)
+                arr.push({ homeWP: wp, elapsed })
                 next[g.id] = arr
               }
+              // post: leave existing snapshot in place
             }
             return next
           })
@@ -153,19 +143,23 @@ export default function App() {
     return () => { clearInterval(liveId); clearInterval(recentId) }
   }, [])
 
-  // Fetch ESPN WP history when active game changes (for chart)
+  // On load (or when switching games), seed wpHistory from the server's
+  // accumulated model snapshots so reloading doesn't lose the chart history.
   useEffect(() => {
     if (!activeId) return
-    if (espnFetched.current.has(activeId)) return
-    espnFetched.current.add(activeId)
-
-    fetchEspnHistory(activeId).then(result => {
-      if (!result) return
-      setEspnHistory(prev => ({ ...prev, [activeId]: result.history }))
-      if (Object.keys(result.records).length > 0) {
-        setTeamRecords(prev => ({ ...prev, ...result.records }))
-      }
-    })
+    fetch(`${API}/wp-history/${activeId}`)
+      .then(r => r.json())
+      .then(data => {
+        const hist = data.history ?? []
+        if (hist.length === 0) return
+        setWpHistory(prev => {
+          // Only seed if we don't already have more data locally
+          const existing = prev[activeId] ?? []
+          if (existing.length >= hist.length) return prev
+          return { ...prev, [activeId]: hist }
+        })
+      })
+      .catch(() => {})
   }, [activeId])
 
   const allGames   = [...games, ...recentGames.filter(r => !games.find(g => g.id === r.id))]
@@ -179,13 +173,11 @@ export default function App() {
     ? distinctAwayColor(activeHomeColor, activeGame.awayTeam.color ?? '#f5a623')
     : '#f5a623'
 
-  // ESPN history takes priority for the chart (full game); fall back to polled history
-  const chartHistory = espnHistory[activeGame?.id] ?? wpHistory[activeGame?.id] ?? []
+  // Chart uses only our model's snapshots — seeded from server on load,
+  // then extended by live polls each 7 s.
+  const chartHistory = wpHistory[activeGame?.id] ?? []
 
   const handlePick = (id) => setActiveId(id)
-
-  const secondsAgo = lastUpdated ? Math.floor((Date.now() - lastUpdated) / 1000) : null
-  const updatedClass = secondsAgo === null ? '' : secondsAgo < 8 ? 'fresh' : secondsAgo > 20 ? 'stale' : ''
 
   return (
     <div className="app">
@@ -202,11 +194,6 @@ export default function App() {
         <div className="masthead-meta">
           {liveCount > 0 && <span className="pulse-pill">LIVE</span>}
           <span>{liveCount > 0 ? `${liveCount} GAME${liveCount > 1 ? 'S' : ''}` : 'NO LIVE GAMES'}</span>
-          {secondsAgo !== null && (
-            <span className={`masthead-updated${updatedClass ? ` ${updatedClass}` : ''}`}>
-              {secondsAgo}s ago
-            </span>
-          )}
           <span className="masthead-clock">{clockStr} EST</span>
         </div>
       </header>
@@ -244,7 +231,7 @@ export default function App() {
             )}
 
             {/* WP Chart — full width */}
-            {activeGame && chartHistory.length > 2 && (
+            {activeGame && chartHistory.length >= 1 && (
               <div className="panel-card">
                 <div className="panel-card-head">
                   <div className="panel-card-title">
@@ -274,11 +261,9 @@ export default function App() {
                     <span className="chart-swatch" style={{ background: activeAwayColor }} />
                     {activeGame.awayTeam.abbreviation} (Away)
                   </span>
-                  <span style={{ marginLeft: 'auto' }}>
-                    {activeGame.status === 'in'
-                      ? `HOVER TO SCRUB · ${chartHistory.length} FRAMES`
-                      : `${chartHistory.length} PLAYS`}
-                  </span>
+                  {activeGame.status === 'pre' && (
+                    <span style={{ marginLeft: 'auto' }}>AWAITING TIPOFF</span>
+                  )}
                 </div>
               </div>
             )}

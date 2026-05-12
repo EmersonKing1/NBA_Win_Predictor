@@ -237,16 +237,6 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.1em;
 }
-.masthead-updated {
-  font-family: var(--f-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  color: var(--dim);
-  font-variant-numeric: tabular-nums;
-  transition: color 1s ease;
-}
-.masthead-updated.fresh { color: var(--green); }
-.masthead-updated.stale { color: var(--dim); opacity: 0.5; }
 
 /* =========================================================
    Page content
@@ -526,6 +516,19 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
   background: var(--panel-3);
 }
 
+/* Live dot inside the clock block, centered below "In Play" */
+.clock-live-dot {
+  margin-top: 10px;
+  align-self: center;
+}
+
+/* Break-state label (HALFTIME, END Q1, etc.) */
+.clock-break {
+  font-size: 20px !important;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
 /* =========================================================
    Win-probability bar
    ========================================================= */
@@ -545,8 +548,11 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
   margin-bottom: 10px;
 }
 .wp-label-row .center {
-  display: inline-flex; align-items: center; gap: 7px;
-  color: var(--dim);
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.12em;
 }
 .wp-label-row .center .live-dot { background: var(--red) !important; }
 
@@ -746,9 +752,13 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
   text-transform: uppercase;
 }
 
-/* WP Chart — full width panel */
-.chart-wrap { position: relative; }
-.chart-svg { width: 100%; height: 280px; display: block; }
+/* WP Chart */
+.chart-wrap {
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.chart-svg { width: 100%; height: 240px; display: block; }
 .chart-legend {
   display: flex; gap: 16px;
   font-family: var(--f-mono);
@@ -759,8 +769,8 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
   align-items: center;
 }
 .chart-swatch {
-  display: inline-block; width: 12px; height: 3px; border-radius: 2px;
-  margin-right: 6px; vertical-align: middle;
+  display: inline-block; width: 10px; height: 2px; border-radius: 1px;
+  margin-right: 5px; vertical-align: middle;
 }
 .chart-q-marks {
   display: grid;
@@ -769,21 +779,30 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
   font-size: 9px;
   color: var(--dim);
   text-align: center;
-  letter-spacing: 0.14em;
-  margin-top: 6px;
+  letter-spacing: 0.12em;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
 }
-.chart-q-marks span:not(:last-child) { border-right: 1px dashed var(--border-2); padding-right: 8px; }
+.chart-q-marks span { padding: 4px 0; }
+.chart-q-marks span:not(:last-child) { border-right: 1px solid var(--border); }
 .chart-cursor-info {
-  position: absolute; top: 0; right: 0;
-  background: var(--panel-3);
-  border: 1px solid var(--border-2);
-  border-radius: 6px;
-  padding: 6px 10px;
+  position: absolute; top: 8px; right: 8px;
+  display: flex; align-items: center; gap: 6px;
+  background: rgba(255,255,255,0.92);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 9px;
   font-family: var(--f-mono);
   font-size: 10px;
+  font-weight: 600;
   color: var(--text);
   pointer-events: none;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.chart-cursor-sep {
+  color: var(--border-2);
+  font-weight: 400;
 }
 
 /* Linescore */
@@ -1105,8 +1124,9 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
   font-size: 15px; font-weight: 800; letter-spacing: 0.03em;
   text-transform: uppercase;
 }
-.recent-team-row.win { color: var(--text); }
+.recent-team-row.win { color: var(--text); font-weight: 700; }
 .recent-team-row.win .recent-team-name { color: var(--text); }
+.score-win { color: var(--text) !important; }
 .recent-team-row .score {
   font-family: var(--f-display);
   font-size: 17px; font-weight: 900;
@@ -1121,16 +1141,11 @@ button:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
 }
 .recent-mark-logo { width: 18px; height: 18px; object-fit: contain; }
 
-.recent-pbar {
-  --left: 50;
-  height: 4px; border-radius: 999px;
-  background: var(--panel-3); position: relative; overflow: hidden; margin-top: 5px;
-}
-.recent-pbar::before {
-  content: '';
-  position: absolute; top: 0; left: 0; bottom: 0;
-  width: calc(var(--left) * 1%);
-  background: var(--winner-color, var(--red)); border-radius: 999px;
+/* Winner accent stripe — bottom of card, always solid in team color */
+.recent-winner-stripe {
+  height: 3px;
+  border-radius: 0 0 var(--radius) var(--radius);
+  flex-shrink: 0;
 }
 
 .upset-badge {
